@@ -188,7 +188,7 @@
     }
     .section-head {
       display: flex;
-      align-items: baseline;
+      align-items: center;
       gap: 8px;
       margin-bottom: 10px;
     }
@@ -264,6 +264,76 @@
       text-align: center;
       color: var(--text-sec);
       font-size: 14px;
+    }
+
+    /* ─── 本周按钮 ─── */
+    .btn-week {
+      margin-left: auto;
+      padding: 5px 13px;
+      background: var(--blue);
+      color: var(--white);
+      border: none;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn-week:active { opacity: 0.75; }
+
+    /* ─── 本周弹窗内容 ─── */
+    .week-day {
+      border: 1px solid var(--gray-border);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .week-day:last-child { margin-bottom: 0; }
+    .week-day-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #f8fafc;
+      padding: 9px 14px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .today-tag {
+      font-size: 11px;
+      background: var(--blue);
+      color: var(--white);
+      border-radius: 10px;
+      padding: 2px 9px;
+      font-weight: 600;
+    }
+    .week-session {
+      padding: 9px 14px;
+      border-top: 1px solid #f3f4f6;
+    }
+    .week-session-label {
+      font-size: 12px;
+      color: var(--text-sec);
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .week-count { font-size: 14px; font-weight: 700; }
+    .week-count.all-ok  { color: var(--green); }
+    .week-count.partial { color: var(--amber); }
+    .week-count.pending { color: var(--text-sec); }
+    .week-absent-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 5px;
+    }
+    .week-chip {
+      background: var(--red-light);
+      color: #b91c1c;
+      border-radius: 6px;
+      padding: 2px 9px;
+      font-size: 12px;
+      font-weight: 600;
     }
 
     /* ─── 底部状态栏 ─── */
@@ -410,6 +480,7 @@
   <div class="section-head">
     <h2>今日打卡状态</h2>
     <span class="sub" id="refreshSub">每 30 秒自动刷新</span>
+    <button class="btn-week" onclick="openWeekModal()">📅 本周</button>
   </div>
 
   <div class="summary-bar">
@@ -448,6 +519,16 @@
     <div class="modal-subtitle" id="modalSubtitle"></div>
     <div id="modalContent"></div>
     <button class="btn-close" onclick="closeModal()">我知道了</button>
+  </div>
+</div>
+
+<!-- ══════════ 本周弹窗 ══════════ -->
+<div class="modal-bg" id="weekModalBg" onclick="onWeekBgClick(event)">
+  <div class="modal-box">
+    <div class="modal-title">📅 本周打卡情况</div>
+    <div class="modal-subtitle" id="weekSubtitle"></div>
+    <div id="weekContent"><div class="loading-row">加载中…</div></div>
+    <button class="btn-close" onclick="closeWeekModal()" style="margin-top:16px">关闭</button>
   </div>
 </div>
 
@@ -757,6 +838,83 @@ function startCountdown() {
       });
     }
   }, 1000);
+}
+
+/* ─── 本周弹窗 ─── */
+async function openWeekModal() {
+  document.getElementById('weekModalBg').classList.add('open');
+  document.getElementById('weekContent').innerHTML = '<div class="loading-row">加载中…</div>';
+  document.getElementById('weekSubtitle').textContent = '';
+  try {
+    const res = await fetch('/api/weekly');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    renderWeekly(await res.json());
+  } catch {
+    document.getElementById('weekContent').innerHTML = '<div class="loading-row">加载失败，请重试</div>';
+  }
+}
+
+function closeWeekModal() {
+  document.getElementById('weekModalBg').classList.remove('open');
+}
+
+function onWeekBgClick(e) {
+  if (e.target === document.getElementById('weekModalBg')) closeWeekModal();
+}
+
+function renderWeekly({ days, total }) {
+  if (!days.length) {
+    document.getElementById('weekContent').innerHTML = '<div class="loading-row">本周暂无数据</div>';
+    return;
+  }
+
+  const first = days[0].date.slice(5).replace('-', '/');
+  const last  = days[days.length - 1].date.slice(5).replace('-', '/');
+  document.getElementById('weekSubtitle').textContent = `本周 ${first} — ${last}`;
+
+  // 今天晚上是否尚未到打卡时段
+  const eveningPending = currentData &&
+    ['before_morning','morning','between'].includes(currentData.period);
+
+  document.getElementById('weekContent').innerHTML = days.map(d => {
+    const dateShort = d.date.slice(5).replace('-', '/');
+    const todayTag  = d.is_today ? '<span class="today-tag">今日</span>' : '';
+
+    // 上午
+    const mCls  = d.morning_count === total ? 'all-ok' : 'partial';
+    const mText = `${d.morning_count}/${total}${d.morning_count === total ? ' 🎉' : ''}`;
+    const mChips = d.morning_absent.length
+      ? `<div class="week-absent-wrap">${d.morning_absent.map(c =>
+          `<span class="week-chip">${c}</span>`).join('')}</div>` : '';
+
+    // 晚上
+    let eHtml;
+    if (d.is_today && eveningPending) {
+      eHtml = '<span class="week-count pending">打卡时段未到（20:30 开始）</span>';
+    } else {
+      const eCls  = d.evening_count === total ? 'all-ok' : 'partial';
+      const eText = `${d.evening_count}/${total}${d.evening_count === total ? ' 🎉' : ''}`;
+      const eChips = d.evening_absent.length
+        ? `<div class="week-absent-wrap">${d.evening_absent.map(c =>
+            `<span class="week-chip">${c}</span>`).join('')}</div>` : '';
+      eHtml = `<span class="week-count ${eCls}">${eText}</span>${eChips}`;
+    }
+
+    return `
+      <div class="week-day">
+        <div class="week-day-head">
+          <span>${d.day_name} ${dateShort}</span>${todayTag}
+        </div>
+        <div class="week-session">
+          <div class="week-session-label">☀️ 上午打卡</div>
+          <span class="week-count ${mCls}">${mText}</span>${mChips}
+        </div>
+        <div class="week-session">
+          <div class="week-session-label">🌙 晚上打卡</div>
+          ${eHtml}
+        </div>
+      </div>`;
+  }).join('');
 }
 
 /* ─── 启动 ─── */
