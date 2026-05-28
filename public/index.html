@@ -1029,29 +1029,36 @@ function renderWeekly({ days, total }) {
   const last  = days[days.length - 1].date.slice(5).replace('-', '/');
   document.getElementById('weekSubtitle').textContent = `本周 ${first} — ${last}`;
 
-  const eveningPending = currentData &&
-    ['before_morning','morning','between'].includes(currentData.period);
+  const period = currentData?.period ?? '';
+
+  const weekPending = txt => `<span class="week-count pending">${txt}</span>`;
+
+  const weekCount = (count, absent) => {
+    const cls   = count === total ? 'all-ok' : 'partial';
+    const text  = `${count}/${total}${count === total ? ' 🎉' : ''}`;
+    const chips = absent.length
+      ? `<div class="week-absent-wrap">${absent.map(c =>
+          `<span class="week-chip">${c}</span>`).join('')}</div>` : '';
+    return `<span class="week-count ${cls}">${text}</span>${chips}`;
+  };
 
   document.getElementById('weekContent').innerHTML = days.map(d => {
     const dateShort = d.date.slice(5).replace('-', '/');
     const todayTag  = d.is_today ? '<span class="today-tag">今日</span>' : '';
 
-    const mCls   = d.morning_count === total ? 'all-ok' : 'partial';
-    const mText  = `${d.morning_count}/${total}${d.morning_count === total ? ' 🎉' : ''}`;
-    const mChips = d.morning_absent.length
-      ? `<div class="week-absent-wrap">${d.morning_absent.map(c =>
-          `<span class="week-chip">${c}</span>`).join('')}</div>` : '';
+    // 上午：今日时段未结束时不显示缺卡
+    const mHtml = d.is_today && ['before_morning','morning'].includes(period)
+      ? weekPending('打卡时段尚未结束（09:30 截止）')
+      : weekCount(d.morning_count, d.morning_absent);
 
+    // 晚上：今日时段未结束时不显示缺卡
     let eHtml;
-    if (d.is_today && eveningPending) {
-      eHtml = '<span class="week-count pending">打卡时段未到（20:30 开始）</span>';
+    if (d.is_today && ['before_morning','morning','between'].includes(period)) {
+      eHtml = weekPending('打卡时段未到（20:30 开始）');
+    } else if (d.is_today && period === 'evening') {
+      eHtml = weekPending('打卡时段进行中（22:00 截止）');
     } else {
-      const eCls   = d.evening_count === total ? 'all-ok' : 'partial';
-      const eText  = `${d.evening_count}/${total}${d.evening_count === total ? ' 🎉' : ''}`;
-      const eChips = d.evening_absent.length
-        ? `<div class="week-absent-wrap">${d.evening_absent.map(c =>
-            `<span class="week-chip">${c}</span>`).join('')}</div>` : '';
-      eHtml = `<span class="week-count ${eCls}">${eText}</span>${eChips}`;
+      eHtml = weekCount(d.evening_count, d.evening_absent);
     }
 
     return `
@@ -1061,7 +1068,7 @@ function renderWeekly({ days, total }) {
         </div>
         <div class="week-session">
           <div class="week-session-label">☀️ 上午打卡</div>
-          <span class="week-count ${mCls}">${mText}</span>${mChips}
+          ${mHtml}
         </div>
         <div class="week-session">
           <div class="week-session-label">🌙 晚上打卡</div>
