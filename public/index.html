@@ -937,20 +937,31 @@ function renderDayModal(data) {
     return;
   }
 
-  const morningAbsent  = status_list.filter(r => !r.morning_time).map(r => r.code);
-  const eveningAbsent  = status_list.filter(r => !r.evening_time).map(r => r.code);
-  const eveningPending = ['before_morning','morning','between'].includes(period);
+  const morningAbsent = status_list.filter(r => !r.morning_time).map(r => r.code);
+  const eveningAbsent = status_list.filter(r => !r.evening_time).map(r => r.code);
 
   const chipsHtml = codes =>
     `<div class="absent-chips">${codes.map(c => `<span class="absent-chip">${c}</span>`).join('')}</div>`;
 
-  const mHtml = morningAbsent.length === 0
-    ? '<div class="modal-all-ok">🎉 全员已打卡</div>'
-    : chipsHtml(morningAbsent);
+  const pending = txt =>
+    `<p style="font-size:13px;color:var(--text-sec);margin-bottom:16px">${txt}</p>`;
 
+  // 上午：时段结束后（between / evening / after_evening）才显示缺卡
+  let mHtml;
+  if (['before_morning','morning'].includes(period)) {
+    mHtml = pending('打卡时段尚未结束（09:30 截止）');
+  } else if (morningAbsent.length === 0) {
+    mHtml = '<div class="modal-all-ok">🎉 全员已打卡</div>';
+  } else {
+    mHtml = chipsHtml(morningAbsent);
+  }
+
+  // 晚上：时段结束后（after_evening）才显示缺卡
   let eHtml;
-  if (eveningPending) {
-    eHtml = '<p style="font-size:13px;color:var(--text-sec);margin-bottom:16px">打卡时段未到（20:30 开始）</p>';
+  if (['before_morning','morning','between'].includes(period)) {
+    eHtml = pending('打卡时段未到（20:30 开始）');
+  } else if (period === 'evening') {
+    eHtml = pending('打卡时段进行中（22:00 截止）');
   } else if (eveningAbsent.length === 0) {
     eHtml = '<div class="modal-all-ok">🎉 全员已打卡</div>';
   } else {
