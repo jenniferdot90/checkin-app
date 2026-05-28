@@ -279,6 +279,13 @@
 
     .btn-week:active { opacity: 0.75; }
 
+    .day-section-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-sec);
+      margin-bottom: 8px;
+    }
+
     /* 统计摘要 */
     .summary-bar {
       display: grid;
@@ -621,6 +628,7 @@
     <div class="section-head">
       <h2>今日打卡状态</h2>
       <span class="sub" id="refreshSub">每 30 秒自动刷新</span>
+      <button class="btn-week" onclick="openDayModal()">📋 本日</button>
       <button class="btn-week" onclick="openWeekModal()">📅 本周</button>
     </div>
 
@@ -694,7 +702,6 @@ const REFRESH_INTERVAL = 30;
 /* ─── 状态 ─── */
 let currentData    = null;
 let selectedCode   = '';
-let modalShown     = false;
 let countdown      = REFRESH_INTERVAL;
 let countdownTimer = null;
 let srvBaseMs      = 0;
@@ -734,7 +741,6 @@ async function fetchStatus() {
     renderList();
     renderSummary();
     updateButtons();
-    maybeShowModal(data);
 
     document.getElementById('refreshSub').textContent = '每 30 秒自动刷新';
   } catch (e) {
@@ -911,42 +917,49 @@ function showNotif(msg, type) {
   notifTimer = setTimeout(() => { el.style.display = 'none'; }, 4500);
 }
 
-/* ─── 缺卡弹窗 ─── */
-function maybeShowModal(data) {
-  if (modalShown || data.is_weekend) return;
-
-  const { period, status_list } = data;
-  let title = '', subtitle = '', absent = [];
-
-  if (period === 'after_evening') {
-    absent   = status_list.filter(r => !r.evening_time).map(r => r.code);
-    title    = '🌙 晚上缺卡提醒';
-    subtitle = '晚上打卡时段（20:30–22:00）已结束';
-    if (!absent.length) {
-      absent   = status_list.filter(r => !r.morning_time).map(r => r.code);
-      title    = '☀️ 上午缺卡提醒';
-      subtitle = '上午打卡时段（06:00–09:30）已结束';
-    }
-  } else if (['between', 'evening'].includes(period)) {
-    absent   = status_list.filter(r => !r.morning_time).map(r => r.code);
-    title    = '☀️ 上午缺卡提醒';
-    subtitle = '上午打卡时段（06:00–09:30）已结束';
-  }
-
-  if (!['between','evening','after_evening'].includes(period)) return;
-
-  modalShown = true;
-  document.getElementById('modalTitle').textContent    = title;
-  document.getElementById('modalSubtitle').textContent = subtitle;
-
-  const content = document.getElementById('modalContent');
-  if (absent.length === 0) {
-    content.innerHTML = '<div class="modal-all-ok">🎉 全员已打卡，非常棒！</div>';
-  } else {
-    content.innerHTML =
-      `<div class="absent-chips">${absent.map(c => `<span class="absent-chip">${c}</span>`).join('')}</div>`;
-  }
+/* ─── 本日缺卡弹窗 ─── */
+function openDayModal() {
+  if (!currentData) { showNotif('数据加载中，请稍候', 'error'); return; }
+  renderDayModal(currentData);
   document.getElementById('modalBg').classList.add('open');
+}
+
+function renderDayModal(data) {
+  const { date, day_of_week, status_list, period, is_weekend } = data;
+  const dateShort = date.slice(5).replace('-', '/');
+
+  document.getElementById('modalTitle').textContent    = '本日打卡情况';
+  document.getElementById('modalSubtitle').textContent = `${dateShort} ${day_of_week}`;
+
+  if (is_weekend) {
+    document.getElementById('modalContent').innerHTML =
+      '<div class="modal-all-ok">🏖️ 今日为周末，无需打卡</div>';
+    return;
+  }
+
+  const morningAbsent  = status_list.filter(r => !r.morning_time).map(r => r.code);
+  const eveningAbsent  = status_list.filter(r => !r.evening_time).map(r => r.code);
+  const eveningPending = ['before_morning','morning','between'].includes(period);
+
+  const chipsHtml = codes =>
+    `<div class="absent-chips">${codes.map(c => `<span class="absent-chip">${c}</span>`).join('')}</div>`;
+
+  const mHtml = morningAbsent.length === 0
+    ? '<div class="modal-all-ok">🎉 全员已打卡</div>'
+    : chipsHtml(morningAbsent);
+
+  let eHtml;
+  if (eveningPending) {
+    eHtml = '<p style="font-size:13px;color:var(--text-sec);margin-bottom:16px">打卡时段未到（20:30 开始）</p>';
+  } else if (eveningAbsent.length === 0) {
+    eHtml = '<div class="modal-all-ok">🎉 全员已打卡</div>';
+  } else {
+    eHtml = chipsHtml(eveningAbsent);
+  }
+
+  document.getElementById('modalContent').innerHTML =
+    `<div class="day-section-label">☀️ 上午缺卡</div>${mHtml}` +
+    `<div class="day-section-label" style="margin-top:14px">🌙 晚上缺卡</div>${eHtml}`;
 }
 
 function closeModal() {
