@@ -1,0 +1,11 @@
+name = "department-checkin"
+compatibility_date = "2024-09-23"
+pages_build_output_dir = "public"
+
+# D1 数据库绑定
+# 部署前将 database_id 替换为你实际创建的 D1 数据库 ID
+# 执行 `npx wrangler d1 create checkin-db` 后会输出 database_id
+[[d1_databases]]
+binding = "DB"
+database_name = "checkin-db"
+database_id = "b2c114d3-bda8-47c4-9c83-46391174fcaa"

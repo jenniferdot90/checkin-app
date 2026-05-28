@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#1e3a8a">
+  <title>部门打卡</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue:        #2563eb;
+      --blue-dark:   #1d4ed8;
+      --blue-deep:   #1e3a8a;
+      --green:       #16a34a;
+      --green-light: #dcfce7;
+      --green-mid:   #86efac;
+      --red:         #dc2626;
+      --red-light:   #fee2e2;
+      --red-mid:     #fca5a5;
+      --amber:       #d97706;
+      --indigo:      #4f46e5;
+      --gray:        #6b7280;
+      --gray-light:  #f3f4f6;
+      --gray-border: #e5e7eb;
+      --text:        #111827;
+      --text-sec:    #6b7280;
+      --white:       #ffffff;
+      --radius:      14px;
+      --shadow:      0 2px 12px rgba(0,0,0,0.08);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC',
+                   'Hiragino Sans GB', 'Microsoft YaHei', 'Segoe UI', sans-serif;
+      background: #eef2f7;
+      color: var(--text);
+      min-height: 100vh;
+      padding-bottom: 56px;
+    }
+
+    /* ─── 顶部 Header ─── */
+    .header {
+      background: linear-gradient(160deg, var(--blue-deep) 0%, var(--blue) 100%);
+      color: var(--white);
+      padding: 20px 16px 18px;
+      text-align: center;
+    }
+    .header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      margin-bottom: 14px;
+    }
+    .time-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      max-width: 380px;
+      margin: 0 auto 12px;
+    }
+    .time-card {
+      background: rgba(255,255,255,0.15);
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
+    .time-card .t-label {
+      font-size: 11px;
+      opacity: 0.75;
+      margin-bottom: 2px;
+    }
+    .time-card .t-value {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+    .period-badge {
+      display: inline-block;
+      padding: 6px 18px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      transition: background 0.3s;
+    }
+    .badge-active   { background: var(--green); }
+    .badge-inactive { background: rgba(255,255,255,0.18); }
+    .badge-weekend  { background: #7c3aed; }
+    .badge-loading  { background: rgba(255,255,255,0.1); }
+
+    /* ─── 打卡卡片 ─── */
+    .card {
+      margin: 14px 14px 0;
+      background: var(--white);
+      border-radius: var(--radius);
+      padding: 18px;
+      box-shadow: var(--shadow);
+    }
+    .card-title {
+      font-size: 14px;
+      color: var(--text-sec);
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+
+    /* 编号下拉 */
+    .select-wrap {
+      position: relative;
+      margin-bottom: 14px;
+    }
+    .select-wrap select {
+      width: 100%;
+      padding: 14px 40px 14px 16px;
+      font-size: 20px;
+      font-weight: 700;
+      border: 2px solid var(--gray-border);
+      border-radius: 12px;
+      background: var(--white);
+      color: var(--text);
+      appearance: none;
+      -webkit-appearance: none;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .select-wrap select:focus { border-color: var(--blue); }
+    .select-arrow {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      pointer-events: none;
+      color: var(--gray);
+      font-size: 16px;
+    }
+
+    /* 打卡按钮 */
+    .btn-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .btn-clk {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      padding: 16px 8px;
+      border: none;
+      border-radius: 14px;
+      font-size: 17px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.15s, opacity 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn-clk:active:not(:disabled) { transform: scale(0.96); }
+    .btn-clk .btn-icon { font-size: 26px; line-height: 1; }
+    .btn-clk .btn-sub  { font-size: 11px; font-weight: 400; opacity: 0.85; min-height: 14px; }
+
+    .btn-morning         { background: linear-gradient(135deg, #fbbf24, var(--amber)); color: var(--white); }
+    .btn-evening         { background: linear-gradient(135deg, #818cf8, var(--indigo)); color: var(--white); }
+    .btn-clk.btn-done    { background: linear-gradient(135deg, #bbf7d0, var(--green-mid)) !important;
+                           color: #15803d !important; }
+    .btn-clk:disabled    { background: var(--gray-light) !important;
+                           color: #9ca3af !important; cursor: not-allowed; transform: none !important; }
+
+    /* ─── 通知条 ─── */
+    .notif {
+      margin: 10px 14px 0;
+      padding: 13px 16px;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 500;
+      display: none;
+      animation: slideDown 0.25s ease;
+    }
+    .notif.success { background: var(--green-light); color: #15803d; border: 1px solid var(--green-mid); }
+    .notif.error   { background: var(--red-light);   color: #b91c1c; border: 1px solid var(--red-mid); }
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ─── 状态总览 ─── */
+    .section-wrap {
+      margin: 14px 14px 0;
+    }
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .section-head h2 { font-size: 15px; font-weight: 700; }
+    .section-head .sub { font-size: 11px; color: var(--text-sec); }
+
+    /* 统计摘要 */
+    .summary-bar {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .summary-item {
+      background: var(--white);
+      border-radius: 10px;
+      padding: 10px 14px;
+      box-shadow: var(--shadow);
+    }
+    .summary-item .s-num  { font-size: 22px; font-weight: 800; }
+    .summary-item .s-label { font-size: 11px; color: var(--text-sec); margin-top: 1px; }
+    .s-green { color: var(--green); }
+    .s-red   { color: var(--red); }
+
+    /* 打卡列表 */
+    .status-table {
+      background: var(--white);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+    .tbl-head {
+      display: grid;
+      grid-template-columns: 64px 1fr 1fr;
+      background: #f8fafc;
+      border-bottom: 1px solid var(--gray-border);
+      padding: 9px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-sec);
+      letter-spacing: 0.5px;
+    }
+    .tbl-row {
+      display: grid;
+      grid-template-columns: 64px 1fr 1fr;
+      padding: 12px 14px;
+      border-bottom: 1px solid #f3f4f6;
+      align-items: center;
+    }
+    .tbl-row:last-child { border-bottom: none; }
+    .tbl-row.is-me { background: #eff6ff; }
+
+    .cell-code {
+      font-size: 17px;
+      font-weight: 800;
+      color: var(--text);
+    }
+    .cell-code .me-tag {
+      display: block;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--blue);
+      margin-top: 1px;
+    }
+    .cell-status { font-size: 13px; }
+    .st-ok   { color: var(--green); font-weight: 600; }
+    .st-none { color: #d1d5db; font-size: 18px; }
+    .st-time { font-size: 11px; display: block; color: #15803d; margin-top: 1px; }
+
+    /* 加载占位 */
+    .loading-row {
+      padding: 32px;
+      text-align: center;
+      color: var(--text-sec);
+      font-size: 14px;
+    }
+
+    /* ─── 底部状态栏 ─── */
+    .footer {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: var(--white);
+      border-top: 1px solid var(--gray-border);
+      padding: 8px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: var(--text-sec);
+      z-index: 50;
+    }
+    .pulse-dot {
+      display: inline-block;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #22c55e;
+      margin-right: 5px;
+      vertical-align: middle;
+      animation: pulse 2.5s infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.3; transform: scale(0.8); }
+    }
+    .countdown { font-variant-numeric: tabular-nums; }
+
+    /* ─── 弹窗 ─── */
+    .modal-bg {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      z-index: 200;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-bg.open { display: flex; animation: fadeIn 0.2s; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .modal-box {
+      background: var(--white);
+      border-radius: 20px;
+      padding: 24px;
+      width: 100%;
+      max-width: 360px;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .modal-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .modal-subtitle {
+      font-size: 13px;
+      color: var(--text-sec);
+      margin-bottom: 16px;
+    }
+    .absent-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .absent-chip {
+      background: var(--red-light);
+      color: #b91c1c;
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .modal-all-ok {
+      color: var(--green);
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 20px;
+    }
+    .btn-close {
+      width: 100%;
+      padding: 14px;
+      background: var(--blue);
+      color: var(--white);
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn-close:active { opacity: 0.85; }
+  </style>
+</head>
+<body>
+
+<!-- ══════════ Header ══════════ -->
+<div class="header">
+  <h1>部门打卡</h1>
+  <div class="time-grid">
+    <div class="time-card">
+      <div class="t-label">日期 &amp; 星期</div>
+      <div class="t-value" id="dateDisplay">···</div>
+    </div>
+    <div class="time-card">
+      <div class="t-label">服务器时间（北京）</div>
+      <div class="t-value" id="clockDisplay">--:--:--</div>
+    </div>
+  </div>
+  <span class="period-badge badge-loading" id="periodBadge">连接中…</span>
+</div>
+
+<!-- ══════════ 打卡区 ══════════ -->
+<div class="card">
+  <div class="card-title">选择我的编号</div>
+  <div class="select-wrap">
+    <select id="codeSelect">
+      <option value="">-- 请选择编号 --</option>
+    </select>
+    <span class="select-arrow">▾</span>
+  </div>
+  <div class="btn-row">
+    <button class="btn-clk btn-morning" id="btnMorning" onclick="doCheckin('morning')" disabled>
+      <span class="btn-icon">☀️</span>
+      <span>上午打卡</span>
+      <span class="btn-sub" id="subMorning">06:00 – 09:30</span>
+    </button>
+    <button class="btn-clk btn-evening" id="btnEvening" onclick="doCheckin('evening')" disabled>
+      <span class="btn-icon">🌙</span>
+      <span>晚上打卡</span>
+      <span class="btn-sub" id="subEvening">20:30 – 22:00</span>
+    </button>
+  </div>
+</div>
+
+<!-- ══════════ 通知条 ══════════ -->
+<div class="notif" id="notif"></div>
+
+<!-- ══════════ 统计 + 状态列表 ══════════ -->
+<div class="section-wrap">
+  <div class="section-head">
+    <h2>今日打卡状态</h2>
+    <span class="sub" id="refreshSub">每 30 秒自动刷新</span>
+  </div>
+
+  <div class="summary-bar">
+    <div class="summary-item">
+      <div class="s-num s-green" id="statMorningOk">-</div>
+      <div class="s-label">上午已打卡人数</div>
+    </div>
+    <div class="summary-item">
+      <div class="s-num s-green" id="statEveningOk">-</div>
+      <div class="s-label">晚上已打卡人数</div>
+    </div>
+  </div>
+
+  <div class="status-table">
+    <div class="tbl-head">
+      <span>编号</span>
+      <span>☀️ 上午</span>
+      <span>🌙 晚上</span>
+    </div>
+    <div id="statusBody">
+      <div class="loading-row">加载中…</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ 底部状态栏 ══════════ -->
+<div class="footer">
+  <span><span class="pulse-dot"></span>实时同步中</span>
+  <span id="footerRight"><span class="countdown" id="countdownEl">30</span>s 后刷新</span>
+</div>
+
+<!-- ══════════ 缺卡弹窗 ══════════ -->
+<div class="modal-bg" id="modalBg" onclick="onBgClick(event)">
+  <div class="modal-box">
+    <div class="modal-title" id="modalTitle">缺卡提醒</div>
+    <div class="modal-subtitle" id="modalSubtitle"></div>
+    <div id="modalContent"></div>
+    <button class="btn-close" onclick="closeModal()">我知道了</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ─── 常量 ─── */
+const CODES = [
+  '864','332','486','748','862','065','943','292','431','995',
+  '815','477','134','498','344','366','976','101','883','462','320'
+];
+const REFRESH_INTERVAL = 30; // 秒
+
+/* ─── 状态 ─── */
+let currentData   = null;   // 最新服务器返回数据
+let selectedCode  = '';
+let modalShown    = false;  // 每次页面加载只弹一次
+let countdown     = REFRESH_INTERVAL;
+let countdownTimer = null;
+
+// 用于本地滴答时钟：记录收到服务器时间时的本地时间戳 & 服务器 Unix ms
+let srvBaseMs    = 0;
+let localBaseMs  = 0;
+let clockTicking = false;
+
+/* ─── 初始化编号下拉 ─── */
+(function initSelect() {
+  const sel = document.getElementById('codeSelect');
+  CODES.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = opt.textContent = c;
+    sel.appendChild(opt);
+  });
+  const saved = localStorage.getItem('checkin_code');
+  if (saved && CODES.includes(saved)) {
+    sel.value = selectedCode = saved;
+  }
+  sel.addEventListener('change', () => {
+    selectedCode = sel.value;
+    if (selectedCode) localStorage.setItem('checkin_code', selectedCode);
+    updateButtons();
+    renderList(); // 刷新「我」的高亮行
+  });
+})();
+
+/* ─── 拉取状态 ─── */
+async function fetchStatus() {
+  try {
+    const res = await fetch('/api/status');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    currentData = data;
+    syncClock(data.server_time, data.date);
+    renderHeader(data);
+    renderList();
+    renderSummary();
+    updateButtons();
+    maybeShowModal(data);
+
+    document.getElementById('refreshSub').textContent = '每 30 秒自动刷新';
+  } catch (e) {
+    document.getElementById('refreshSub').textContent = '刷新失败，重试中…';
+    console.error('fetchStatus error:', e);
+  }
+}
+
+/* ─── 本地时钟同步 ─── */
+function syncClock(serverTimeStr, serverDateStr) {
+  // 把 "HH:MM:SS" + "YYYY-MM-DD" 转成 Unix ms（UTC+8）
+  const [h, m, s] = serverTimeStr.split(':').map(Number);
+  const [y, mo, d] = serverDateStr.split('-').map(Number);
+  // UTC+8 时间 → UTC Unix ms
+  srvBaseMs  = Date.UTC(y, mo - 1, d, h - 8, m, s);
+  localBaseMs = Date.now();
+
+  if (!clockTicking) {
+    clockTicking = true;
+    setInterval(tickClock, 1000);
+  }
+}
+
+function tickClock() {
+  if (!srvBaseMs) return;
+  const elapsed = Date.now() - localBaseMs;
+  const nowMs   = srvBaseMs + elapsed;
+  const d       = new Date(nowMs);
+  // 转 UTC+8
+  const utc8    = new Date(nowMs + 8 * 3600 * 1000);
+  const hh = String(utc8.getUTCHours()).padStart(2, '0');
+  const mm = String(utc8.getUTCMinutes()).padStart(2, '0');
+  const ss = String(utc8.getUTCSeconds()).padStart(2, '0');
+  document.getElementById('clockDisplay').textContent = `${hh}:${mm}:${ss}`;
+}
+
+/* ─── 渲染 Header ─── */
+const PERIOD_INFO = {
+  before_morning: { text: '⏳ 上午打卡未开始（06:00 起）', cls: 'badge-inactive' },
+  morning:        { text: '☀️ 上午打卡时段（06:00–09:30）', cls: 'badge-active'   },
+  between:        { text: '💤 非打卡时段', cls: 'badge-inactive' },
+  evening:        { text: '🌙 晚上打卡时段（20:30–22:00）', cls: 'badge-active'   },
+  after_evening:  { text: '✅ 今日打卡已结束', cls: 'badge-inactive' },
+  none:           { text: '🏖️ 今日为周末，无需打卡', cls: 'badge-weekend' },
+};
+
+function renderHeader(data) {
+  // 日期 + 星期
+  const dateShort = data.date.slice(5).replace('-', '/'); // "05/28"
+  document.getElementById('dateDisplay').textContent = `${dateShort} ${data.day_of_week}`;
+
+  // 时段徽章
+  const badge = document.getElementById('periodBadge');
+  const info  = PERIOD_INFO[data.period] ?? { text: data.period, cls: 'badge-inactive' };
+  badge.textContent = info.text;
+  badge.className   = `period-badge ${info.cls}`;
+}
+
+/* ─── 渲染打卡列表 ─── */
+function renderList() {
+  const body = document.getElementById('statusBody');
+  if (!currentData) return;
+
+  body.innerHTML = currentData.status_list.map(item => {
+    const isMe = item.code === selectedCode;
+    const mHtml = item.morning_time
+      ? `<span class="st-ok">✅<span class="st-time">${item.morning_time}</span></span>`
+      : `<span class="st-none">—</span>`;
+    const eHtml = item.evening_time
+      ? `<span class="st-ok">✅<span class="st-time">${item.evening_time}</span></span>`
+      : `<span class="st-none">—</span>`;
+    return `
+      <div class="tbl-row${isMe ? ' is-me' : ''}">
+        <span class="cell-code">${item.code}${isMe ? '<span class="me-tag">▶ 我</span>' : ''}</span>
+        <span class="cell-status">${mHtml}</span>
+        <span class="cell-status">${eHtml}</span>
+      </div>`;
+  }).join('');
+}
+
+/* ─── 渲染统计摘要 ─── */
+function renderSummary() {
+  if (!currentData) return;
+  const list = currentData.status_list;
+  document.getElementById('statMorningOk').textContent =
+    list.filter(r => r.morning_time).length;
+  document.getElementById('statEveningOk').textContent =
+    list.filter(r => r.evening_time).length;
+}
+
+/* ─── 更新打卡按钮状态 ─── */
+function updateButtons() {
+  const btnM = document.getElementById('btnMorning');
+  const btnE = document.getElementById('btnEvening');
+  const subM = document.getElementById('subMorning');
+  const subE = document.getElementById('subEvening');
+
+  // 重置为默认状态
+  [btnM, btnE].forEach(b => { b.classList.remove('btn-done'); b.disabled = true; });
+  subM.textContent = '06:00 – 09:30';
+  subE.textContent = '20:30 – 22:00';
+
+  if (!selectedCode || !currentData) return;
+
+  const { period, is_weekend, status_list } = currentData;
+  const mine = status_list.find(r => r.code === selectedCode);
+
+  if (is_weekend) {
+    subM.textContent = subE.textContent = '周末无需打卡';
+    return;
+  }
+
+  // ── 上午按钮 ──
+  if (mine?.morning_time) {
+    btnM.disabled = true;
+    btnM.classList.add('btn-done');
+    subM.textContent = mine.morning_time;
+  } else if (period === 'morning') {
+    btnM.disabled = false;
+    subM.textContent = '点击打卡';
+  } else if (period === 'before_morning') {
+    subM.textContent = '未到时间';
+  } else {
+    subM.textContent = '已过时间';
+  }
+
+  // ── 晚上按钮 ──
+  if (mine?.evening_time) {
+    btnE.disabled = true;
+    btnE.classList.add('btn-done');
+    subE.textContent = mine.evening_time;
+  } else if (period === 'evening') {
+    btnE.disabled = false;
+    subE.textContent = '点击打卡';
+  } else if (['before_morning', 'morning', 'between'].includes(period)) {
+    subE.textContent = '未到时间';
+  } else {
+    subE.textContent = '已过时间';
+  }
+}
+
+/* ─── 打卡动作 ─── */
+async function doCheckin(period) {
+  if (!selectedCode) {
+    showNotif('请先选择您的编号', 'error'); return;
+  }
+
+  const btn = period === 'morning'
+    ? document.getElementById('btnMorning')
+    : document.getElementById('btnEvening');
+
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/checkin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: selectedCode, period }),
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      showNotif('✅ ' + data.message, 'success');
+      await fetchStatus(); // 立即刷新
+    } else {
+      showNotif('❌ ' + data.message, 'error');
+      updateButtons(); // 恢复按钮
+    }
+  } catch {
+    showNotif('⚠️ 网络异常，请重试', 'error');
+    updateButtons();
+  }
+}
+
+/* ─── 通知条 ─── */
+let notifTimer = null;
+function showNotif(msg, type) {
+  const el = document.getElementById('notif');
+  el.textContent  = msg;
+  el.className    = `notif ${type}`;
+  el.style.display = 'block';
+  clearTimeout(notifTimer);
+  notifTimer = setTimeout(() => { el.style.display = 'none'; }, 4500);
+}
+
+/* ─── 缺卡弹窗 ─── */
+function maybeShowModal(data) {
+  if (modalShown || data.is_weekend) return;
+
+  const { period, status_list } = data;
+  let title = '', subtitle = '', absent = [];
+
+  if (period === 'after_evening') {
+    // 优先提示晚上缺卡
+    absent   = status_list.filter(r => !r.evening_time).map(r => r.code);
+    title    = '🌙 晚上缺卡提醒';
+    subtitle = `晚上打卡时段（20:30–22:00）已结束`;
+    if (!absent.length) {
+      // 晚上全员打卡，检查上午
+      absent   = status_list.filter(r => !r.morning_time).map(r => r.code);
+      title    = '☀️ 上午缺卡提醒';
+      subtitle = `上午打卡时段（06:00–09:30）已结束`;
+    }
+  } else if (['between', 'evening'].includes(period)) {
+    absent   = status_list.filter(r => !r.morning_time).map(r => r.code);
+    title    = '☀️ 上午缺卡提醒';
+    subtitle = `上午打卡时段（06:00–09:30）已结束`;
+  }
+
+  if (absent.length === 0 && !['between','evening','after_evening'].includes(period)) return;
+
+  // 有缺卡或全勤都弹（仅弹缺卡相关时段）
+  if (!['between','evening','after_evening'].includes(period)) return;
+
+  modalShown = true;
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalSubtitle').textContent = subtitle;
+
+  const content = document.getElementById('modalContent');
+  if (absent.length === 0) {
+    content.innerHTML = '<div class="modal-all-ok">🎉 全员已打卡，非常棒！</div>';
+  } else {
+    content.innerHTML =
+      `<div class="absent-chips">${absent.map(c => `<span class="absent-chip">${c}</span>`).join('')}</div>`;
+  }
+  document.getElementById('modalBg').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modalBg').classList.remove('open');
+}
+
+function onBgClick(e) {
+  if (e.target === document.getElementById('modalBg')) closeModal();
+}
+
+/* ─── 倒计时 + 自动刷新 ─── */
+function startCountdown() {
+  countdown = REFRESH_INTERVAL;
+  clearInterval(countdownTimer);
+  countdownTimer = setInterval(() => {
+    countdown--;
+    document.getElementById('countdownEl').textContent = countdown;
+    if (countdown <= 0) {
+      countdown = REFRESH_INTERVAL;
+      fetchStatus().then(() => {
+        document.getElementById('countdownEl').textContent = REFRESH_INTERVAL;
+      });
+    }
+  }, 1000);
+}
+
+/* ─── 启动 ─── */
+fetchStatus().then(startCountdown);
+</script>
+</body>
+</html>
