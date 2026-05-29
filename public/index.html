@@ -1254,9 +1254,10 @@ async function togglePush() {
 
   try {
     const reg = await navigator.serviceWorker.ready;
+    // Chrome 同时接受 base64url 字符串和 Uint8Array，字符串更简洁稳定
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: b64uToUint8(pubKey),
+      applicationServerKey: pubKey.trim(),
     });
     await fetch('/api/subscribe', {
       method: 'POST',
