@@ -678,10 +678,7 @@
     </div>
     <div class="notif-row" id="notifRow" style="display:none">
       <span class="notif-desc" id="notifDesc">🔔 开启后截止前 15 分钟弹提醒（页面保持后台运行；已添加到桌面效果更佳）</span>
-      <div style="display:flex;gap:6px;flex-shrink:0">
-        <button class="btn-notif btn-notif-on" id="btnPush" onclick="toggleLocalReminder()">开启提醒</button>
-        <button class="btn-notif btn-notif-off" id="btnTestNotif" onclick="testNotif()" style="display:none;font-size:11px;padding:5px 8px">测试</button>
-      </div>
+      <button class="btn-notif btn-notif-on" id="btnPush" onclick="toggleLocalReminder()">开启提醒</button>
     </div>
   </div>
 
@@ -1196,11 +1193,8 @@ function refreshNotifButton() {
     btn.onclick     = null;
     return;
   }
-  const isEnabled = localStorage.getItem('reminder_code') === selectedCode
-    && Notification.permission === 'granted';
-  document.getElementById('btnTestNotif').style.display = isEnabled ? 'inline-block' : 'none';
-
-  if (isEnabled) {
+  if (localStorage.getItem('reminder_code') === selectedCode
+      && Notification.permission === 'granted') {
     btn.textContent = '✅ 提醒已开启';
     btn.className   = 'btn-notif btn-notif-ok';
     btn.disabled    = false;
@@ -1278,21 +1272,6 @@ function scheduleLocalTimers() {
     _reminderTimers.push(setTimeout(() => fireLocalNotif('evening'), eveningUTC - nowUTC));
 }
 
-async function testNotif() {
-  const code = localStorage.getItem('reminder_code') || selectedCode;
-  if (!code) { showNotif('请先选择编号并开启提醒', 'error'); return; }
-  if (Notification.permission !== 'granted') { showNotif('请先允许通知权限', 'error'); return; }
-
-  const reg = await navigator.serviceWorker.ready;
-  reg.showNotification('⏰ 打卡提醒（测试）', {
-    body:     `这是一条测试通知，实际提醒将在 09:15 和 21:45 推送给编号 ${code}`,
-    icon:     '/icons/icon-192.png',
-    tag:      'checkin-test',
-    renotify: true,
-    data:     { url: '/' },
-  });
-  showNotif('测试通知已发出，请查看系统通知栏', 'success');
-}
 
 async function fireLocalNotif(period) {
   const code = localStorage.getItem('reminder_code');
