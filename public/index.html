@@ -1193,14 +1193,38 @@ function b64uToUint8(b64u) {
 
 function refreshPushButtonState() {
   const btn = document.getElementById('btnPush');
-  if (!('Notification' in window) || !('PushManager' in window)) {
-    btn.textContent = '当前环境不支持';
+
+  // 非 HTTPS / localhost 环境，Push API 不可用
+  if (!window.isSecureContext) {
+    btn.textContent = '需 HTTPS 才能开启';
     btn.className = 'btn-notif btn-notif-off';
     btn.disabled = true;
     return;
   }
+
+  // iOS Safari 浏览器（未安装为 PWA）没有 PushManager
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent.toLowerCase());
+  const isInstalled = window.navigator.standalone === true
+    || window.matchMedia('(display-mode: standalone)').matches;
+
+  if (!('Notification' in window) || !('PushManager' in window)) {
+    if (isIOS && !isInstalled) {
+      btn.textContent = '请先添加到主屏幕';
+      btn.className = 'btn-notif btn-notif-on';
+      btn.disabled = false;
+      btn.onclick = () => showNotif(
+        '请点击 Safari 底部分享按钮 → "添加到主屏幕"，再从桌面图标打开即可开启提醒', 'success'
+      );
+    } else {
+      btn.textContent = '浏览器不支持推送';
+      btn.className = 'btn-notif btn-notif-off';
+      btn.disabled = true;
+    }
+    return;
+  }
+
   if (Notification.permission === 'denied') {
-    btn.textContent = '通知已被禁止';
+    btn.textContent = '通知权限已拒绝';
     btn.className = 'btn-notif btn-notif-off';
     btn.disabled = true;
     return;
