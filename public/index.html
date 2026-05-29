@@ -677,8 +677,8 @@
       <button onclick="switchCode()">切换编号</button>
     </div>
     <div class="notif-row" id="notifRow" style="display:none">
-      <span class="notif-desc">🔔 开启提醒后，打卡截止前 15 分钟自动推送通知（需已添加到桌面并允许通知）</span>
-      <button class="btn-notif btn-notif-on" id="btnPush" onclick="togglePush()">开启提醒</button>
+      <span class="notif-desc" id="notifDesc">🔔 开启后截止前 15 分钟弹提醒（页面保持后台运行；已添加到桌面效果更佳）</span>
+      <button class="btn-notif btn-notif-on" id="btnPush" onclick="toggleLocalReminder()">开启提醒</button>
     </div>
   </div>
 
@@ -1153,12 +1153,21 @@ function updateCodeHint() {
   if (selectedCode) {
     hint.style.display = 'block';
     num.textContent = selectedCode;
-    document.getElementById('notifRow').style.display = 'flex';
-    refreshPushButtonState();
+    // Notification API 比 PushManager 支持范围更广
+    if (notifSupported()) {
+      document.getElementById('notifRow').style.display = 'flex';
+      refreshNotifButton();
+    } else {
+      document.getElementById('notifRow').style.display = 'none';
+    }
   } else {
     hint.style.display = 'none';
     document.getElementById('notifRow').style.display = 'none';
   }
+}
+
+function notifSupported() {
+  return window.isSecureContext && 'Notification' in window && 'serviceWorker' in navigator;
 }
 
 function switchCode() {
@@ -1171,128 +1180,126 @@ function switchCode() {
   sel.focus();
 }
 
-/* ─── Web Push ─── */
-let vapidPublicKey = null;
+/* ─── 本地通知（不依赖 FCM / Web Push）─── */
 
-async function getVapidKey() {
-  if (vapidPublicKey) return vapidPublicKey;
-  try {
-    const r = await fetch('/api/vapid-key');
-    if (!r.ok) return null;
-    const { publicKey } = await r.json();
-    vapidPublicKey = publicKey;
-    return publicKey;
-  } catch { return null; }
-}
+let _reminderTimers = [];
 
-function b64uToUint8(b64u) {
-  b64u = b64u.trim().replace(/-/g, '+').replace(/_/g, '/');
-  while (b64u.length % 4) b64u += '=';
-  return Uint8Array.from(atob(b64u), c => c.charCodeAt(0));
-}
-
-function refreshPushButtonState() {
+function refreshNotifButton() {
   const btn = document.getElementById('btnPush');
-
-  // 非 HTTPS / localhost 环境，Push API 不可用
-  if (!window.isSecureContext) {
-    btn.textContent = '需 HTTPS 才能开启';
-    btn.className = 'btn-notif btn-notif-off';
-    btn.disabled = true;
-    return;
-  }
-
-  // iOS Safari 浏览器（未安装为 PWA）没有 PushManager
-  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent.toLowerCase());
-  const isInstalled = window.navigator.standalone === true
-    || window.matchMedia('(display-mode: standalone)').matches;
-
-  if (!('Notification' in window) || !('PushManager' in window)) {
-    if (isIOS && !isInstalled) {
-      btn.textContent = '请先添加到主屏幕';
-      btn.className = 'btn-notif btn-notif-on';
-      btn.disabled = false;
-      btn.onclick = () => showNotif(
-        '请点击 Safari 底部分享按钮 → "添加到主屏幕"，再从桌面图标打开即可开启提醒', 'success'
-      );
-    } else {
-      btn.textContent = '浏览器不支持推送';
-      btn.className = 'btn-notif btn-notif-off';
-      btn.disabled = true;
-    }
-    return;
-  }
-
   if (Notification.permission === 'denied') {
     btn.textContent = '通知权限已拒绝';
-    btn.className = 'btn-notif btn-notif-off';
-    btn.disabled = true;
+    btn.className   = 'btn-notif btn-notif-off';
+    btn.disabled    = true;
+    btn.onclick     = null;
     return;
   }
-  // 检查本地是否已订阅
-  if (localStorage.getItem('push_subscribed') === selectedCode) {
+  if (localStorage.getItem('reminder_code') === selectedCode
+      && Notification.permission === 'granted') {
     btn.textContent = '✅ 提醒已开启';
-    btn.className = 'btn-notif btn-notif-ok';
-    btn.disabled = false;
-    btn.onclick = cancelPush;
+    btn.className   = 'btn-notif btn-notif-ok';
+    btn.disabled    = false;
+    btn.onclick     = cancelLocalReminder;
   } else {
     btn.textContent = '🔔 开启提醒';
-    btn.className = 'btn-notif btn-notif-on';
-    btn.disabled = false;
-    btn.onclick = togglePush;
+    btn.className   = 'btn-notif btn-notif-on';
+    btn.disabled    = false;
+    btn.onclick     = toggleLocalReminder;
   }
 }
 
-async function togglePush() {
+async function toggleLocalReminder() {
   if (!selectedCode) { showNotif('请先选择编号', 'error'); return; }
-  const pubKey = await getVapidKey();
-  if (!pubKey) { showNotif('服务端未配置推送，请联系管理员', 'error'); return; }
 
   let perm = Notification.permission;
   if (perm === 'default') perm = await Notification.requestPermission();
-  if (perm !== 'granted') { showNotif('请在浏览器设置中允许通知权限', 'error'); return; }
-
-  try {
-    const reg = await navigator.serviceWorker.ready;
-    // Chrome 同时接受 base64url 字符串和 Uint8Array，字符串更简洁稳定
-    const sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: pubKey.trim(),
-    });
-    await fetch('/api/subscribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: selectedCode, subscription: sub.toJSON() }),
-    });
-    localStorage.setItem('push_subscribed', selectedCode);
-    showNotif('✅ 打卡提醒已开启', 'success');
-    refreshPushButtonState();
-  } catch (e) {
-    console.error(e);
-    showNotif('订阅失败：' + e.message, 'error');
+  if (perm !== 'granted') {
+    showNotif('请在浏览器/系统设置中允许通知权限', 'error');
+    refreshNotifButton();
+    return;
   }
+
+  localStorage.setItem('reminder_code', selectedCode);
+
+  // 把编号存给 SW，用于 Periodic Background Sync 后台唤醒时使用
+  const reg = await navigator.serviceWorker.ready;
+  reg.active?.postMessage({ type: 'SAVE_CODE', code: selectedCode });
+
+  // 注册 Periodic Background Sync（Chrome Android 安装 PWA 后后台唤醒，无需 FCM）
+  if ('periodicSync' in reg) {
+    try {
+      const status = await navigator.permissions.query({ name: 'periodic-background-sync' });
+      if (status.state === 'granted') {
+        await reg.periodicSync.register('checkin-check', { minInterval: 15 * 60 * 1000 });
+      }
+    } catch { /* 不支持则跳过，只依赖前台定时器 */ }
+  }
+
+  scheduleLocalTimers();
+  showNotif('✅ 提醒已开启，页面保持运行时将在截止前 15 分钟弹出通知', 'success');
+  refreshNotifButton();
 }
 
-async function cancelPush() {
+async function cancelLocalReminder() {
+  localStorage.removeItem('reminder_code');
+  _reminderTimers.forEach(clearTimeout);
+  _reminderTimers = [];
   try {
     const reg = await navigator.serviceWorker.ready;
-    const sub = await reg.pushManager.getSubscription();
-    if (sub) await sub.unsubscribe();
-    await fetch('/api/subscribe', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: selectedCode }),
-    });
-    localStorage.removeItem('push_subscribed');
-    showNotif('提醒已关闭', 'success');
-    refreshPushButtonState();
-  } catch (e) {
-    showNotif('取消失败：' + e.message, 'error');
+    if ('periodicSync' in reg) await reg.periodicSync.unregister('checkin-check').catch(() => {});
+  } catch { /* ignore */ }
+  showNotif('提醒已关闭', 'success');
+  refreshNotifButton();
+}
+
+function scheduleLocalTimers() {
+  _reminderTimers.forEach(clearTimeout);
+  _reminderTimers = [];
+
+  const now  = new Date();
+  const off8 = now.getTime() + 8 * 3600 * 1000;
+  const u8   = new Date(off8);
+  const [y, mo, d] = u8.toISOString().slice(0, 10).split('-').map(Number);
+
+  // 北京 09:15 → UTC 01:15
+  const morningUTC = Date.UTC(y, mo - 1, d, 1, 15, 0);
+  // 北京 21:45 → UTC 13:45
+  const eveningUTC = Date.UTC(y, mo - 1, d, 13, 45, 0);
+  const nowUTC = now.getTime();
+
+  if (morningUTC > nowUTC)
+    _reminderTimers.push(setTimeout(() => fireLocalNotif('morning'), morningUTC - nowUTC));
+  if (eveningUTC > nowUTC)
+    _reminderTimers.push(setTimeout(() => fireLocalNotif('evening'), eveningUTC - nowUTC));
+}
+
+async function fireLocalNotif(period) {
+  const code = localStorage.getItem('reminder_code');
+  if (!code || Notification.permission !== 'granted') return;
+
+  if (currentData) {
+    const mine = currentData.status_list?.find(r => r.code === code);
+    const tf   = period === 'morning' ? 'morning_time' : 'evening_time';
+    if (mine?.[tf]) return; // 已打卡，不提醒
   }
+
+  const label    = period === 'morning' ? '上午' : '晚上';
+  const deadline = period === 'morning' ? '09:30' : '22:00';
+  const reg      = await navigator.serviceWorker.ready;
+  reg.showNotification('⏰ 打卡提醒', {
+    body:     `${label}打卡还有 15 分钟截止（${deadline}），你（编号 ${code}）还没打卡`,
+    icon:     '/icons/icon-192.png',
+    tag:      `checkin-${period}`,
+    renotify: true,
+    data:     { url: '/' },
+  });
 }
 
 /* ─── 启动 ─── */
 updateCodeHint();
+// 页面刷新后重建本地定时器（若已开启提醒）
+if (localStorage.getItem('reminder_code') && Notification.permission === 'granted') {
+  scheduleLocalTimers();
+}
 fetchStatus().then(startCountdown);
 </script>
 </body>
