@@ -4,7 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="theme-color" content="#3b82f6">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
   <title>部门打卡</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -278,6 +281,57 @@
     }
 
     .btn-week:active { opacity: 0.75; }
+
+    /* ─── 通知区域 ─── */
+    .notif-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--gray-border);
+      gap: 10px;
+    }
+    .notif-desc {
+      font-size: 12px;
+      color: var(--text-sec);
+      flex: 1;
+      line-height: 1.5;
+    }
+    .btn-notif {
+      flex-shrink: 0;
+      padding: 7px 14px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+      transition: opacity 0.15s;
+      white-space: nowrap;
+    }
+    .btn-notif:active { opacity: 0.75; }
+    .btn-notif-on  { background: var(--blue-light); color: var(--blue); border: 1px solid var(--blue-mid); }
+    .btn-notif-off { background: var(--gray-light);  color: var(--text-sec); }
+    .btn-notif-ok  { background: var(--green-light); color: #15803d; cursor: default; }
+
+    /* 切换编号入口 */
+    .code-hint {
+      font-size: 11px;
+      color: var(--text-sec);
+      margin-top: 6px;
+      text-align: right;
+    }
+    .code-hint button {
+      background: none;
+      border: none;
+      color: var(--blue);
+      font-size: 11px;
+      cursor: pointer;
+      padding: 0;
+      font-family: inherit;
+      text-decoration: underline;
+    }
 
     .day-section-label {
       font-size: 13px;
@@ -618,6 +672,14 @@
         <span class="btn-sub" id="subEvening">20:30–22:00</span>
       </button>
     </div>
+    <div class="code-hint" id="codeHint" style="display:none">
+      已记住编号 <strong id="codeHintNum"></strong> &nbsp;
+      <button onclick="switchCode()">切换编号</button>
+    </div>
+    <div class="notif-row" id="notifRow" style="display:none">
+      <span class="notif-desc">🔔 开启提醒后，打卡截止前 15 分钟自动推送通知（需已添加到桌面并允许通知）</span>
+      <button class="btn-notif btn-notif-on" id="btnPush" onclick="togglePush()">开启提醒</button>
+    </div>
   </div>
 
   <!-- ══════════ 通知条 ══════════ -->
@@ -725,6 +787,7 @@ let clockTicking   = false;
     if (selectedCode) localStorage.setItem('checkin_code', selectedCode);
     updateButtons();
     renderList();
+    updateCodeHint();
   });
 })();
 
@@ -1078,7 +1141,133 @@ function renderWeekly({ days, total }) {
   }).join('');
 }
 
+/* ─── PWA：注册 Service Worker ─── */
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(console.error);
+}
+
+/* ─── 固定编号 & 通知行 ─── */
+function updateCodeHint() {
+  const hint = document.getElementById('codeHint');
+  const num  = document.getElementById('codeHintNum');
+  if (selectedCode) {
+    hint.style.display = 'block';
+    num.textContent = selectedCode;
+    document.getElementById('notifRow').style.display = 'flex';
+    refreshPushButtonState();
+  } else {
+    hint.style.display = 'none';
+    document.getElementById('notifRow').style.display = 'none';
+  }
+}
+
+function switchCode() {
+  // 显示下拉框让用户重新选择
+  const sel = document.getElementById('codeSelect');
+  sel.value = '';
+  selectedCode = '';
+  sel.parentElement.style.display = 'block';
+  updateCodeHint();
+  sel.focus();
+}
+
+/* ─── Web Push ─── */
+let vapidPublicKey = null;
+
+async function getVapidKey() {
+  if (vapidPublicKey) return vapidPublicKey;
+  try {
+    const r = await fetch('/api/vapid-key');
+    if (!r.ok) return null;
+    const { publicKey } = await r.json();
+    vapidPublicKey = publicKey;
+    return publicKey;
+  } catch { return null; }
+}
+
+function b64uToUint8(b64u) {
+  b64u = b64u.replace(/-/g, '+').replace(/_/g, '/');
+  while (b64u.length % 4) b64u += '=';
+  return Uint8Array.from(atob(b64u), c => c.charCodeAt(0));
+}
+
+function refreshPushButtonState() {
+  const btn = document.getElementById('btnPush');
+  if (!('Notification' in window) || !('PushManager' in window)) {
+    btn.textContent = '当前环境不支持';
+    btn.className = 'btn-notif btn-notif-off';
+    btn.disabled = true;
+    return;
+  }
+  if (Notification.permission === 'denied') {
+    btn.textContent = '通知已被禁止';
+    btn.className = 'btn-notif btn-notif-off';
+    btn.disabled = true;
+    return;
+  }
+  // 检查本地是否已订阅
+  if (localStorage.getItem('push_subscribed') === selectedCode) {
+    btn.textContent = '✅ 提醒已开启';
+    btn.className = 'btn-notif btn-notif-ok';
+    btn.disabled = false;
+    btn.onclick = cancelPush;
+  } else {
+    btn.textContent = '🔔 开启提醒';
+    btn.className = 'btn-notif btn-notif-on';
+    btn.disabled = false;
+    btn.onclick = togglePush;
+  }
+}
+
+async function togglePush() {
+  if (!selectedCode) { showNotif('请先选择编号', 'error'); return; }
+  const pubKey = await getVapidKey();
+  if (!pubKey) { showNotif('服务端未配置推送，请联系管理员', 'error'); return; }
+
+  let perm = Notification.permission;
+  if (perm === 'default') perm = await Notification.requestPermission();
+  if (perm !== 'granted') { showNotif('请在浏览器设置中允许通知权限', 'error'); return; }
+
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: b64uToUint8(pubKey),
+    });
+    await fetch('/api/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: selectedCode, subscription: sub.toJSON() }),
+    });
+    localStorage.setItem('push_subscribed', selectedCode);
+    showNotif('✅ 打卡提醒已开启', 'success');
+    refreshPushButtonState();
+  } catch (e) {
+    console.error(e);
+    showNotif('订阅失败：' + e.message, 'error');
+  }
+}
+
+async function cancelPush() {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) await sub.unsubscribe();
+    await fetch('/api/subscribe', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: selectedCode }),
+    });
+    localStorage.removeItem('push_subscribed');
+    showNotif('提醒已关闭', 'success');
+    refreshPushButtonState();
+  } catch (e) {
+    showNotif('取消失败：' + e.message, 'error');
+  }
+}
+
 /* ─── 启动 ─── */
+updateCodeHint();
 fetchStatus().then(startCountdown);
 </script>
 </body>

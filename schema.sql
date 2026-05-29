@@ -11,3 +11,12 @@ CREATE TABLE IF NOT EXISTS checkins (
 
 -- 可选：创建索引加速按日期查询
 CREATE INDEX IF NOT EXISTS idx_checkins_date ON checkins(date);
+
+-- Push 订阅表（每人一条，覆盖更新）
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  code       TEXT PRIMARY KEY,
+  endpoint   TEXT NOT NULL,
+  p256dh     TEXT NOT NULL,
+  auth       TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
