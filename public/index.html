@@ -1186,7 +1186,7 @@ async function getVapidKey() {
 }
 
 function b64uToUint8(b64u) {
-  b64u = b64u.replace(/-/g, '+').replace(/_/g, '/');
+  b64u = b64u.trim().replace(/-/g, '+').replace(/_/g, '/');
   while (b64u.length % 4) b64u += '=';
   return Uint8Array.from(atob(b64u), c => c.charCodeAt(0));
 }
