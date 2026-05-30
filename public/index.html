@@ -166,11 +166,83 @@
       font-size: 13px;
     }
 
+    /* ─── 管理员按钮（Header 右上角）─── */
+    .header-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      margin-bottom: 12px;
+    }
+    .header-title-row h1 {
+      font-size: 19px;
+      font-weight: 500;
+      letter-spacing: 2px;
+      color: var(--white);
+    }
+    .admin-entry {
+      position: absolute;
+      right: 0;
+      background: rgba(255,255,255,0.18);
+      border: none;
+      border-radius: 8px;
+      color: var(--white);
+      font-size: 15px;
+      width: 30px; height: 30px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .admin-entry:active { background: rgba(255,255,255,0.35); }
+
+    /* ─── 管理员面板 ─── */
+    .admin-toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--gray-light);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .admin-toggle-btn {
+      padding: 6px 16px;
+      border: none;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+      transition: opacity 0.15s;
+    }
+    .admin-toggle-btn:active { opacity: 0.75; }
+    .admin-toggle-on  { background: var(--green-light); color: #15803d; }
+    .admin-toggle-off { background: var(--red-light);   color: var(--red); }
+    .admin-note { font-size: 11px; color: var(--text-sec); margin-bottom: 14px; }
+    .admin-input {
+      flex: 1;
+      padding: 10px 12px;
+      border: 1.5px solid var(--gray-border);
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+    }
+    .admin-input:focus { border-color: var(--blue); }
+
     /* ─── 打卡按钮 ─── */
     .btn-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 10px;
+    }
+    .btn-row-late {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
     }
 
     .btn-clk {
@@ -231,6 +303,43 @@
     @keyframes breathe-cool {
       0%, 100% { box-shadow: 0 0 0 0 rgba(79,70,229,0.35); }
       50%       { box-shadow: 0 0 0 7px rgba(79,70,229,0); }
+    }
+
+    /* ─── 补打卡按钮 ─── */
+    .btn-late-clk {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      padding: 10px 8px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: transform 0.15s;
+      -webkit-tap-highlight-color: transparent;
+      font-family: inherit;
+    }
+    .btn-late-clk .btn-sub { font-size: 10px; font-weight: 400; opacity: 0.85; min-height: 13px; }
+    .btn-late-clk:active:not(:disabled) { transform: scale(0.97); }
+    .btn-late-clk:disabled:not(.btn-done-late) {
+      background: var(--gray-light) !important;
+      color: #9ca3af !important;
+      cursor: not-allowed; opacity: 0.6;
+    }
+    .btn-late-clk.btn-done-late {
+      background: #ffedd5 !important;
+      color: #c2410c !important;
+      cursor: default;
+    }
+    .btn-late-morning:not(:disabled):not(.btn-done-late) {
+      background: linear-gradient(135deg, #fb923c, #ea580c);
+      color: var(--white);
+    }
+    .btn-late-evening:not(:disabled):not(.btn-done-late) {
+      background: linear-gradient(135deg, #fb923c, #ea580c);
+      color: var(--white);
     }
 
     /* ─── 通知条 ─── */
@@ -425,26 +534,30 @@
 
     .cell-status { font-size: 13px; }
 
-    /* 已打卡：绿色对勾 */
+    /* 正常打卡：绿色对勾 */
     .st-ok {
       display: inline-flex;
       flex-direction: column;
       color: var(--green);
       font-weight: 500;
     }
-
     .st-ok-mark { font-size: 15px; line-height: 1; }
     .st-time    { font-size: 10px; color: #15803d; margin-top: 1px;
                   font-variant-numeric: tabular-nums; }
 
-    /* 未打卡：灰色虚线圆点 */
-    .st-dot {
-      display: inline-block;
-      width: 14px; height: 14px;
-      border: 1.5px dashed #d1d5db;
-      border-radius: 50%;
-      vertical-align: middle;
+    /* 补打卡：橙色对勾 + "(补)" */
+    .st-late {
+      display: inline-flex;
+      flex-direction: column;
+      color: #ea580c;
+      font-weight: 500;
     }
+    .st-late-mark { font-size: 15px; line-height: 1; }
+    .st-late-time { font-size: 10px; color: #c2410c; margin-top: 1px;
+                    font-variant-numeric: tabular-nums; }
+
+    /* 未打卡 */
+    .st-none { font-size: 11px; color: #9ca3af; }
 
     /* 加载占位 */
     .loading-row {
@@ -637,7 +750,10 @@
 
   <!-- ══════════ Header 卡片 ══════════ -->
   <div class="header-card">
-    <h1>部门打卡</h1>
+    <div class="header-title-row">
+      <h1>部门打卡</h1>
+      <button class="admin-entry" onclick="openAdminModal()" title="管理员">⚙️</button>
+    </div>
     <div class="time-grid">
       <div class="time-card">
         <div class="t-label">日期 &amp; 星期</div>
@@ -670,6 +786,16 @@
         <span class="btn-icon">🌙</span>
         <span>晚上打卡</span>
         <span class="btn-sub" id="subEvening">20:30–22:00</span>
+      </button>
+    </div>
+    <div class="btn-row-late">
+      <button class="btn-late-clk btn-late-morning" id="btnMorningLate" onclick="doCheckin('morning_late')" disabled>
+        <span>上午补打卡</span>
+        <span class="btn-sub" id="subMorningLate">09:30–12:00</span>
+      </button>
+      <button class="btn-late-clk btn-late-evening" id="btnEveningLate" onclick="doCheckin('evening_late')" disabled>
+        <span>晚上补打卡</span>
+        <span class="btn-sub" id="subEveningLate">22:00–00:00</span>
       </button>
     </div>
     <div class="code-hint" id="codeHint" style="display:none">
@@ -751,6 +877,30 @@
   </div>
 </div>
 
+<!-- ══════════ 管理员面板 ══════════ -->
+<div class="modal-bg" id="adminModalBg" onclick="onAdminBgClick(event)">
+  <div class="modal-box">
+    <div class="modal-title">⚙️ 管理员设置</div>
+    <div id="adminPwSection">
+      <div class="modal-subtitle">请输入管理员密码</div>
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <input type="password" id="adminPwInput" class="admin-input" placeholder="密码"
+               onkeydown="if(event.key==='Enter')verifyAdminPw()">
+        <button class="btn-close" style="width:auto;padding:0 18px;font-size:14px" onclick="verifyAdminPw()">确认</button>
+      </div>
+    </div>
+    <div id="adminPanel" style="display:none">
+      <div class="modal-subtitle" id="adminDateLabel"></div>
+      <div class="admin-toggle-row">
+        <span>周六日 / 节假日强制打卡</span>
+        <button class="admin-toggle-btn" id="adminToggleBtn" onclick="toggleWorkday()">加载中…</button>
+      </div>
+      <div class="admin-note">开关仅对今日有效，次日 00:00 自动失效</div>
+    </div>
+    <button class="btn-close" onclick="closeAdminModal()">关闭</button>
+  </div>
+</div>
+
 <script>
 'use strict';
 
@@ -804,6 +954,7 @@ async function fetchStatus() {
     renderList();
     renderSummary();
     updateButtons();
+    maybeShowModal(data);
 
     document.getElementById('refreshSub').textContent = '每 30 秒自动刷新';
   } catch (e) {
@@ -836,12 +987,13 @@ function tickClock() {
 
 /* ─── 渲染 Header ─── */
 const PERIOD_INFO = {
-  before_morning: { text: '⏳ 上午打卡未开始（06:00 起）', cls: 'badge-before'   },
-  morning:        { text: '☀️ 上午打卡时段（06:00–09:30）', cls: 'badge-active'   },
-  between:        { text: '💤 非打卡时段',                  cls: 'badge-inactive' },
-  evening:        { text: '🌙 晚上打卡时段（20:30–22:00）', cls: 'badge-evening'  },
-  after_evening:  { text: '✅ 今日打卡已结束',              cls: 'badge-done'     },
-  none:           { text: '🏖️ 今日为周末，无需打卡',         cls: 'badge-weekend'  },
+  before_morning: { text: '⏳ 上午打卡未开始（06:00 起）',      cls: 'badge-before'   },
+  morning:        { text: '☀️ 上午打卡时段（06:00–09:30）',     cls: 'badge-active'   },
+  morning_late:   { text: '🟠 上午补打卡时段（09:30–12:00）',   cls: 'badge-before'   },
+  between:        { text: '💤 非打卡时段',                       cls: 'badge-inactive' },
+  evening:        { text: '🌙 晚上打卡时段（20:30–22:00）',     cls: 'badge-evening'  },
+  evening_late:   { text: '🟠 晚上补打卡时段（22:00–00:00）',   cls: 'badge-before'   },
+  none:           { text: '🏖️ 今日为休息日，无需打卡',           cls: 'badge-weekend'  },
 };
 
 function renderHeader(data) {
@@ -849,7 +1001,11 @@ function renderHeader(data) {
   document.getElementById('dateDisplay').textContent = `${dateShort} ${data.day_of_week}`;
 
   const badge = document.getElementById('periodBadge');
-  const info  = PERIOD_INFO[data.period] ?? { text: data.period, cls: 'badge-inactive' };
+  let info = PERIOD_INFO[data.period] ?? { text: data.period, cls: 'badge-inactive' };
+  // 管理员开启强制打卡时特殊提示
+  if (data.force_workday) {
+    info = { text: '📋 今日需打卡（管理员已开启）', cls: 'badge-active' };
+  }
   badge.textContent = info.text;
   badge.className   = `period-badge ${info.cls}`;
 }
@@ -861,17 +1017,18 @@ function renderList() {
 
   body.innerHTML = currentData.status_list.map(item => {
     const isMe = item.code === selectedCode;
-    const mHtml = item.morning_time
-      ? `<span class="st-ok"><span class="st-ok-mark">✓</span><span class="st-time">${item.morning_time}</span></span>`
-      : `<span class="st-dot"></span>`;
-    const eHtml = item.evening_time
-      ? `<span class="st-ok"><span class="st-ok-mark">✓</span><span class="st-time">${item.evening_time}</span></span>`
-      : `<span class="st-dot"></span>`;
+
+    function cellHtml(time, late) {
+      if (time) return `<span class="st-ok"><span class="st-ok-mark">✓</span><span class="st-time">${time}</span></span>`;
+      if (late) return `<span class="st-late"><span class="st-late-mark">✓</span><span class="st-late-time">${late}（补）</span></span>`;
+      return `<span class="st-none">未打卡</span>`;
+    }
+
     return `
       <div class="tbl-row${isMe ? ' is-me' : ''}">
         <span class="cell-code">${item.code}${isMe ? '<span class="me-tag">▶ 我</span>' : ''}</span>
-        <span class="cell-status">${mHtml}</span>
-        <span class="cell-status">${eHtml}</span>
+        <span class="cell-status">${cellHtml(item.morning_time, item.morning_late)}</span>
+        <span class="cell-status">${cellHtml(item.evening_time, item.evening_late)}</span>
       </div>`;
   }).join('');
 }
@@ -886,16 +1043,24 @@ function renderSummary() {
     list.filter(r => r.evening_time).length;
 }
 
-/* ─── 更新打卡按钮状态 ─── */
+/* ─── 更新打卡按钮状态（含补打卡）─── */
 function updateButtons() {
-  const btnM = document.getElementById('btnMorning');
-  const btnE = document.getElementById('btnEvening');
-  const subM = document.getElementById('subMorning');
-  const subE = document.getElementById('subEvening');
+  const btnM  = document.getElementById('btnMorning');
+  const btnML = document.getElementById('btnMorningLate');
+  const btnE  = document.getElementById('btnEvening');
+  const btnEL = document.getElementById('btnEveningLate');
+  const subM  = document.getElementById('subMorning');
+  const subML = document.getElementById('subMorningLate');
+  const subE  = document.getElementById('subEvening');
+  const subEL = document.getElementById('subEveningLate');
 
+  // 重置
   [btnM, btnE].forEach(b => { b.classList.remove('btn-done'); b.disabled = true; });
-  subM.textContent = '06:00–09:30';
-  subE.textContent = '20:30–22:00';
+  [btnML, btnEL].forEach(b => { b.classList.remove('btn-done-late'); b.disabled = true; });
+  subM.textContent  = '06:00–09:30';
+  subML.textContent = '09:30–12:00';
+  subE.textContent  = '20:30–22:00';
+  subEL.textContent = '22:00–00:00';
 
   if (!selectedCode || !currentData) return;
 
@@ -903,36 +1068,54 @@ function updateButtons() {
   const mine = status_list.find(r => r.code === selectedCode);
 
   if (is_weekend) {
-    subM.textContent = subE.textContent = '周末无需打卡';
+    [subM, subML, subE, subEL].forEach(s => s.textContent = '今日无需打卡');
     return;
   }
 
-  // ── 上午按钮 ──
-  if (mine?.morning_time) {
-    btnM.disabled = true;
-    btnM.classList.add('btn-done');
-    subM.textContent = '· ' + mine.morning_time;
+  const morningDone = mine?.morning_time || mine?.morning_late;
+  const eveningDone = mine?.evening_time || mine?.evening_late;
+
+  // ── 上午 ──
+  if (morningDone) {
+    const isLate = !mine.morning_time && mine.morning_late;
+    if (isLate) {
+      btnML.disabled = true; btnML.classList.add('btn-done-late');
+      subML.textContent = '· ' + mine.morning_late;
+    } else {
+      btnM.disabled = true; btnM.classList.add('btn-done');
+      subM.textContent = '· ' + mine.morning_time;
+    }
+    subM.textContent  = isLate ? '已打卡' : '· ' + mine.morning_time;
+    subML.textContent = isLate ? '· ' + mine.morning_late : '已打卡';
   } else if (period === 'morning') {
-    btnM.disabled = false;
-    subM.textContent = '· 进行中';
-  } else if (period === 'before_morning') {
-    subM.textContent = '· 未开始';
-  } else {
+    btnM.disabled = false; subM.textContent = '· 进行中';
+    subML.textContent = '· 未到时间';
+  } else if (period === 'morning_late') {
     subM.textContent = '· 已结束';
+    btnML.disabled = false; subML.textContent = '· 进行中';
+  } else if (period === 'before_morning') {
+    subM.textContent = '· 未开始'; subML.textContent = '· 未到时间';
+  } else {
+    subM.textContent = '· 已结束'; subML.textContent = '· 已结束';
   }
 
-  // ── 晚上按钮 ──
-  if (mine?.evening_time) {
-    btnE.disabled = true;
-    btnE.classList.add('btn-done');
-    subE.textContent = '· ' + mine.evening_time;
+  // ── 晚上 ──
+  if (eveningDone) {
+    const isLate = !mine.evening_time && mine.evening_late;
+    subE.textContent  = isLate ? '已打卡' : '· ' + mine.evening_time;
+    subEL.textContent = isLate ? '· ' + mine.evening_late : '已打卡';
+    if (isLate) { btnEL.disabled = true; btnEL.classList.add('btn-done-late'); }
+    else         { btnE.disabled  = true; btnE.classList.add('btn-done'); }
   } else if (period === 'evening') {
-    btnE.disabled = false;
-    subE.textContent = '· 进行中';
-  } else if (['before_morning', 'morning', 'between'].includes(period)) {
-    subE.textContent = '· 未开始';
-  } else {
+    btnE.disabled = false; subE.textContent = '· 进行中';
+    subEL.textContent = '· 未到时间';
+  } else if (period === 'evening_late') {
     subE.textContent = '· 已结束';
+    btnEL.disabled = false; subEL.textContent = '· 进行中';
+  } else if (['before_morning','morning','morning_late','between'].includes(period)) {
+    subE.textContent = '· 未开始'; subEL.textContent = '· 未到时间';
+  } else {
+    subE.textContent = '· 已结束'; subEL.textContent = '· 已结束';
   }
 }
 
@@ -942,9 +1125,13 @@ async function doCheckin(period) {
     showNotif('请先选择您的编号', 'error'); return;
   }
 
-  const btn = period === 'morning'
-    ? document.getElementById('btnMorning')
-    : document.getElementById('btnEvening');
+  const btnMap = {
+    morning:      'btnMorning',
+    morning_late: 'btnMorningLate',
+    evening:      'btnEvening',
+    evening_late: 'btnEveningLate',
+  };
+  const btn = document.getElementById(btnMap[period]);
 
   btn.disabled = true;
 
@@ -980,6 +1167,38 @@ function showNotif(msg, type) {
   notifTimer = setTimeout(() => { el.style.display = 'none'; }, 4500);
 }
 
+/* ─── 缺卡弹窗（自动 + 本日按钮共用）─── */
+let morningModalShown  = false;
+let eveningModalShown  = false;
+
+function maybeShowModal(data) {
+  if (data.is_rest_day) return;
+  const { period, status_list, prev_evening_absent } = data;
+
+  // 12:00 后弹上午缺卡（between / evening / evening_late）
+  if (!morningModalShown && ['between','evening','evening_late'].includes(period)) {
+    const absent = status_list.filter(r => !r.morning_time && !r.morning_late).map(r => r.code);
+    if (absent.length) {
+      morningModalShown = true;
+      showAbsentModal('☀️ 上午缺卡提醒', '上午打卡时段（含补卡）已结束', absent);
+    }
+  }
+
+  // before_morning：弹前一天晚上缺卡
+  if (!eveningModalShown && period === 'before_morning' && prev_evening_absent?.length) {
+    eveningModalShown = true;
+    showAbsentModal('🌙 昨晚缺卡提醒', '昨日晚上打卡时段（含补卡）已结束', prev_evening_absent);
+  }
+}
+
+function showAbsentModal(title, subtitle, absent) {
+  document.getElementById('modalTitle').textContent    = title;
+  document.getElementById('modalSubtitle').textContent = subtitle;
+  document.getElementById('modalContent').innerHTML =
+    `<div class="absent-chips">${absent.map(c => `<span class="absent-chip">${c}</span>`).join('')}</div>`;
+  document.getElementById('modalBg').classList.add('open');
+}
+
 /* ─── 本日缺卡弹窗 ─── */
 function openDayModal() {
   if (!currentData) { showNotif('数据加载中，请稍候', 'error'); return; }
@@ -1000,31 +1219,33 @@ function renderDayModal(data) {
     return;
   }
 
-  const morningAbsent = status_list.filter(r => !r.morning_time).map(r => r.code);
-  const eveningAbsent = status_list.filter(r => !r.evening_time).map(r => r.code);
+  // 补卡也算已打卡
+  const morningAbsent = status_list.filter(r => !r.morning_time && !r.morning_late).map(r => r.code);
+  const eveningAbsent = status_list.filter(r => !r.evening_time && !r.evening_late).map(r => r.code);
 
   const chipsHtml = codes =>
     `<div class="absent-chips">${codes.map(c => `<span class="absent-chip">${c}</span>`).join('')}</div>`;
-
   const pending = txt =>
     `<p style="font-size:13px;color:var(--text-sec);margin-bottom:16px">${txt}</p>`;
 
-  // 上午：时段结束后（between / evening / after_evening）才显示缺卡
+  // 上午：morning / morning_late 时段内不显示缺卡
   let mHtml;
-  if (['before_morning','morning'].includes(period)) {
-    mHtml = pending('打卡时段尚未结束（09:30 截止）');
+  if (['before_morning','morning','morning_late'].includes(period)) {
+    mHtml = pending('上午打卡时段尚未结束（含补卡至 12:00）');
   } else if (morningAbsent.length === 0) {
     mHtml = '<div class="modal-all-ok">🎉 全员已打卡</div>';
   } else {
     mHtml = chipsHtml(morningAbsent);
   }
 
-  // 晚上：时段结束后（after_evening）才显示缺卡
+  // 晚上：evening / evening_late 时段内不显示缺卡
   let eHtml;
-  if (['before_morning','morning','between'].includes(period)) {
-    eHtml = pending('打卡时段未到（20:30 开始）');
+  if (['before_morning','morning','morning_late','between'].includes(period)) {
+    eHtml = pending('晚上打卡时段未到（20:30 开始）');
   } else if (period === 'evening') {
-    eHtml = pending('打卡时段进行中（22:00 截止）');
+    eHtml = pending('晚上打卡进行中（22:00 截止）');
+  } else if (period === 'evening_late') {
+    eHtml = pending('晚上补打卡进行中（00:00 截止）');
   } else if (eveningAbsent.length === 0) {
     eHtml = '<div class="modal-all-ok">🎉 全员已打卡</div>';
   } else {
@@ -1139,6 +1360,87 @@ function renderWeekly({ days, total }) {
         </div>
       </div>`;
   }).join('');
+}
+
+/* ─── 管理员面板 ─── */
+let adminPw       = '';
+let adminVerified = false;
+let adminForce    = false;
+
+function openAdminModal() {
+  document.getElementById('adminModalBg').classList.add('open');
+  if (adminVerified) {
+    showAdminPanel();
+  } else {
+    document.getElementById('adminPwSection').style.display = 'block';
+    document.getElementById('adminPanel').style.display = 'none';
+    document.getElementById('adminPwInput').value = '';
+    setTimeout(() => document.getElementById('adminPwInput').focus(), 150);
+  }
+}
+
+function closeAdminModal() {
+  document.getElementById('adminModalBg').classList.remove('open');
+}
+
+function onAdminBgClick(e) {
+  if (e.target === document.getElementById('adminModalBg')) closeAdminModal();
+}
+
+async function verifyAdminPw() {
+  const pw = document.getElementById('adminPwInput').value.trim();
+  if (!pw) return;
+  try {
+    const res = await fetch('/api/admin/toggle-workday', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw, probe: true }),
+    });
+    if (res.status === 403) { showNotif('密码错误', 'error'); return; }
+    const data = await res.json();
+    adminPw       = pw;
+    adminVerified = true;
+    adminForce    = data.force_active;
+    showAdminPanel();
+  } catch { showNotif('验证失败，请重试', 'error'); }
+}
+
+function showAdminPanel() {
+  document.getElementById('adminPwSection').style.display = 'none';
+  document.getElementById('adminPanel').style.display = 'block';
+  if (currentData) {
+    document.getElementById('adminDateLabel').textContent =
+      `今日：${currentData.date} ${currentData.day_of_week}`;
+    adminForce = currentData.force_workday;
+  }
+  refreshAdminToggle();
+}
+
+function refreshAdminToggle() {
+  const btn = document.getElementById('adminToggleBtn');
+  if (adminForce) {
+    btn.textContent = '已开启（点击关闭）';
+    btn.className   = 'admin-toggle-btn admin-toggle-on';
+  } else {
+    btn.textContent = '未开启（点击开启）';
+    btn.className   = 'admin-toggle-btn admin-toggle-off';
+  }
+}
+
+async function toggleWorkday() {
+  const enable = !adminForce;
+  try {
+    const res = await fetch('/api/admin/toggle-workday', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: adminPw, enable }),
+    });
+    if (!res.ok) { showNotif('操作失败', 'error'); return; }
+    adminForce = enable;
+    refreshAdminToggle();
+    showNotif(enable ? '✅ 今日已开启强制打卡' : '已关闭强制打卡', 'success');
+    await fetchStatus(); // 刷新页面状态
+  } catch { showNotif('操作失败', 'error'); }
 }
 
 /* ─── PWA：注册 Service Worker ─── */

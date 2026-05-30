@@ -1,125 +1,119 @@
-/**
- * POST /api/checkin
- * 入参: { code: string, period: 'morning' | 'evening' }
- * 后端完整校验后写入 D1，返回 { success, message, time? }
- * 所有时间以服务器 UTC+8 为准，不信任客户端时间
- */
-
 const CODES = new Set([
-  '864', '332', '486', '748', '862', '065', '943', '292', '431', '995',
-  '815', '477', '134', '498', '344', '366', '976', '101', '883', '462', '320'
+  '864','332','486','748','862','065','943','292','431','995',
+  '815','477','134','498','344','366','976','101','883','462','320'
 ]);
 
 function toUTC8(now) {
-  const utc8Ms = now.getTime() + 8 * 60 * 60 * 1000;
-  const d = new Date(utc8Ms);
+  const ms = now.getTime() + 8 * 3600 * 1000;
+  const d  = new Date(ms);
   return {
-    year:      d.getUTCFullYear(),
-    month:     d.getUTCMonth() + 1,
-    day:       d.getUTCDate(),
-    hours:     d.getUTCHours(),
-    minutes:   d.getUTCMinutes(),
-    seconds:   d.getUTCSeconds(),
+    year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate(),
+    hours: d.getUTCHours(), minutes: d.getUTCMinutes(), seconds: d.getUTCSeconds(),
     dayOfWeek: d.getUTCDay(),
   };
 }
 
+function pad(n) { return String(n).padStart(2, '0'); }
+
 function fail(msg, status = 400) {
-  return Response.json({ success: false, message: msg }, {
-    status,
-    headers: corsHeaders(),
-  });
+  return Response.json({ success: false, message: msg }, { status, headers: cors() });
 }
 
-export async function onRequestPost(context) {
-  const { env, request } = context;
+async function getForceWorkday(env, dateStr) {
+  const s = await env.DB.prepare(
+    "SELECT value FROM settings WHERE key = 'force_workday_date'"
+  ).first();
+  return s?.value === dateStr;
+}
 
-  // 解析请求体
+export async function onRequestPost({ env, request }) {
   let body;
-  try {
-    body = await request.json();
-  } catch {
-    return fail('请求格式错误，请发送 JSON');
-  }
+  try { body = await request.json(); } catch { return fail('请求格式错误，请发送 JSON'); }
 
   const { code, period } = body ?? {};
+  if (!code || !CODES.has(String(code))) return fail('编号不存在，请检查后重试');
 
-  // 校验编号
-  if (!code || !CODES.has(String(code))) {
-    return fail('编号不存在，请检查后重试');
-  }
+  const validPeriods = ['morning', 'morning_late', 'evening', 'evening_late'];
+  if (!validPeriods.includes(period)) return fail('时段参数错误');
 
-  // 校验时段参数
-  if (period !== 'morning' && period !== 'evening') {
-    return fail('时段参数错误（应为 morning 或 evening）');
-  }
-
-  // 获取服务器 UTC+8 时间
   const now = new Date();
   const { year, month, day, hours, minutes, seconds, dayOfWeek } = toUTC8(now);
+  const date    = `${year}-${pad(month)}-${pad(day)}`;
+  const timeStr = `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 
-  const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  // 判断今日是否需要打卡（含管理员开关）
+  const isCalWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+  const forceWorkday = isCalWeekend ? await getForceWorkday(env, date) : false;
+  const isRestDay    = isCalWeekend && !forceWorkday;
+  if (isRestDay) return fail('今日为休息日，无需打卡');
 
-  // 校验是否工作日
-  if (dayOfWeek === 0 || dayOfWeek === 6) {
-    return fail('今日为周末，无需打卡');
-  }
-
-  // 校验时段是否在允许范围内（以分钟表示）
+  // 时段时间校验
   const t = hours * 60 + minutes;
-  const MORNING_START = 6 * 60;        // 06:00
-  const MORNING_END   = 9 * 60 + 30;  // 09:30
-  const EVENING_START = 20 * 60 + 30; // 20:30
-  const EVENING_END   = 22 * 60;      // 22:00
-
   if (period === 'morning') {
-    if (t < MORNING_START) return fail(`上午打卡尚未开始（06:00 才开始）`);
-    if (t >= MORNING_END)  return fail(`上午打卡时间已过（截止 09:30）`);
-  } else {
-    if (t < EVENING_START) return fail(`晚上打卡尚未开始（20:30 才开始）`);
-    if (t >= EVENING_END)  return fail(`晚上打卡时间已过（截止 22:00）`);
+    if (t < 360)  return fail('上午打卡尚未开始（06:00 才开始）');
+    if (t >= 570) return fail('上午打卡时间已过（截止 09:30），可使用补打卡');
+  } else if (period === 'morning_late') {
+    if (t < 570)  return fail('上午补打卡尚未开始（09:30 才开始）');
+    if (t >= 720) return fail('上午补打卡时间已过（截止 12:00）');
+  } else if (period === 'evening') {
+    if (t < 1230) return fail('晚上打卡尚未开始（20:30 才开始）');
+    if (t >= 1320) return fail('晚上打卡时间已过（截止 22:00），可使用补打卡');
+  } else { // evening_late
+    if (t < 1320) return fail('晚上补打卡尚未开始（22:00 才开始）');
+    // 23:59 仍有效，无上限
   }
 
-  // 查询是否已打卡
+  // 查当日记录
   const existing = await env.DB.prepare(
-    'SELECT morning_time, evening_time FROM checkins WHERE date = ? AND code = ?'
+    'SELECT morning_time, morning_late, evening_time, evening_late FROM checkins WHERE date = ? AND code = ?'
   ).bind(date, String(code)).first();
 
-  const periodLabel = period === 'morning' ? '上午' : '晚上';
-  const timeField   = period === 'morning' ? 'morning_time' : 'evening_time';
+  const isMorningPeriod = period === 'morning' || period === 'morning_late';
+  const isEveningPeriod = period === 'evening' || period === 'evening_late';
 
-  if (existing?.[timeField]) {
-    return fail(`今日${periodLabel}已打卡（打卡时间：${existing[timeField]}）`);
+  if (isMorningPeriod) {
+    const done = existing?.morning_time || existing?.morning_late;
+    if (done) return fail(`今日上午已打卡（打卡时间：${done}）`);
+  }
+  if (isEveningPeriod) {
+    const done = existing?.evening_time || existing?.evening_late;
+    if (done) return fail(`今日晚上已打卡（打卡时间：${done}）`);
   }
 
-  // 写入数据库：有记录则 UPDATE，无记录则 INSERT
+  // 写入数据库
+  const fieldMap = {
+    morning:      'morning_time',
+    morning_late: 'morning_late',
+    evening:      'evening_time',
+    evening_late: 'evening_late',
+  };
+  const field = fieldMap[period];
+
   if (existing) {
     await env.DB.prepare(
-      `UPDATE checkins SET ${timeField} = ? WHERE date = ? AND code = ?`
+      `UPDATE checkins SET ${field} = ? WHERE date = ? AND code = ?`
     ).bind(timeStr, date, String(code)).run();
   } else {
-    const morningVal = period === 'morning' ? timeStr : null;
-    const eveningVal = period === 'evening' ? timeStr : null;
+    const v = { morning_time: null, morning_late: null, evening_time: null, evening_late: null };
+    v[field] = timeStr;
     await env.DB.prepare(
-      'INSERT INTO checkins (date, code, morning_time, evening_time) VALUES (?, ?, ?, ?)'
-    ).bind(date, String(code), morningVal, eveningVal).run();
+      'INSERT INTO checkins (date, code, morning_time, morning_late, evening_time, evening_late) VALUES (?,?,?,?,?,?)'
+    ).bind(date, String(code), v.morning_time, v.morning_late, v.evening_time, v.evening_late).run();
   }
 
+  const labelMap = { morning: '上午', morning_late: '上午（补）', evening: '晚上', evening_late: '晚上（补）' };
   return Response.json({
     success: true,
-    message: `${periodLabel}打卡成功！打卡时间：${timeStr}`,
+    message: `${labelMap[period]}打卡成功！打卡时间：${timeStr}`,
     time: timeStr,
-  }, {
-    headers: corsHeaders(),
-  });
+  }, { headers: cors() });
 }
 
 export async function onRequestOptions() {
-  return new Response(null, { headers: corsHeaders() });
+  return new Response(null, { headers: cors() });
 }
 
-function corsHeaders() {
+function cors() {
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
