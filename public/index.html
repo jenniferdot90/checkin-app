@@ -333,14 +333,45 @@
       color: #c2410c !important;
       cursor: default;
     }
-    .btn-late-morning:not(:disabled):not(.btn-done-late) {
+    .btn-late-clk:not(:disabled):not(.btn-done-late) {
       background: linear-gradient(135deg, #fb923c, #ea580c);
       color: var(--white);
     }
-    .btn-late-evening:not(:disabled):not(.btn-done-late) {
-      background: linear-gradient(135deg, #fb923c, #ea580c);
-      color: var(--white);
+
+    /* ─── 休假按钮 ─── */
+    .btn-leave-clk {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      padding: 10px 8px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: transform 0.15s;
+      -webkit-tap-highlight-color: transparent;
+      font-family: inherit;
+      background: #ede9fe;
+      color: #5b21b6;
     }
+    .btn-leave-clk .btn-sub { font-size: 10px; font-weight: 400; opacity: 0.85; min-height: 13px; }
+    .btn-leave-clk:active:not(:disabled) { transform: scale(0.97); }
+    .btn-leave-clk:disabled {
+      background: var(--gray-light) !important;
+      color: #9ca3af !important;
+      cursor: not-allowed; opacity: 0.6;
+    }
+    .btn-leave-clk.leave-taken {
+      background: #f3e8ff !important;
+      color: #7c3aed !important;
+      cursor: default;
+    }
+
+    /* 休假行样式 */
+    .tbl-row.is-leave { background: #faf5ff !important; }
+    .st-leave { font-size: 12px; color: #7c3aed; font-weight: 500; }
 
     /* ─── 通知条 ─── */
     .notif {
@@ -789,13 +820,13 @@
       </button>
     </div>
     <div class="btn-row-late">
-      <button class="btn-late-clk btn-late-morning" id="btnMorningLate" onclick="doCheckin('morning_late')" disabled>
-        <span>上午补打卡</span>
-        <span class="btn-sub" id="subMorningLate">09:30–12:00</span>
+      <button class="btn-late-clk" id="btnLate" onclick="doCheckin('late')" disabled>
+        <span id="btnLateText">补打卡</span>
+        <span class="btn-sub" id="subLate">不在补卡时段</span>
       </button>
-      <button class="btn-late-clk btn-late-evening" id="btnEveningLate" onclick="doCheckin('evening_late')" disabled>
-        <span>晚上补打卡</span>
-        <span class="btn-sub" id="subEveningLate">22:00–00:00</span>
+      <button class="btn-leave-clk" id="btnLeave" onclick="requestLeave()" disabled>
+        <span>🌴 今日休假</span>
+        <span class="btn-sub" id="subLeave">选择后无需打卡</span>
       </button>
     </div>
     <div class="code-hint" id="codeHint" style="display:none">
@@ -835,7 +866,11 @@
       </div>
     </div>
 
-    <div class="status-table">
+    <div id="statLeaveRow" style="display:none;font-size:11px;color:var(--text-sec);text-align:right;margin-bottom:6px;padding-right:2px">
+    今日 <span id="statLeaveCount">0</span> 人休假
+  </div>
+
+  <div class="status-table">
       <div class="tbl-head">
         <span>编号</span>
         <span>☀️ 上午</span>
@@ -874,6 +909,19 @@
     <div class="modal-subtitle" id="weekSubtitle"></div>
     <div id="weekContent"><div class="loading-row">加载中…</div></div>
     <button class="btn-close" onclick="closeWeekModal()" style="margin-top:16px">关闭</button>
+  </div>
+</div>
+
+<!-- ══════════ 休假确认弹窗 ══════════ -->
+<div class="modal-bg" id="leaveConfirmBg" onclick="onLeaveConfirmBgClick(event)">
+  <div class="modal-box" style="max-width:320px">
+    <div class="modal-title">🌴 确认今日休假？</div>
+    <div class="modal-subtitle">休假后当天无需打卡，该操作不可撤销。</div>
+    <div style="display:flex;gap:10px">
+      <button class="btn-close" style="background:var(--gray-light);color:var(--text);font-weight:400"
+              onclick="closeLeaveConfirm()">取消</button>
+      <button class="btn-close" onclick="confirmLeave()">确认休假</button>
+    </div>
   </div>
 </div>
 
@@ -1016,7 +1064,17 @@ function renderList() {
   if (!currentData) return;
 
   body.innerHTML = currentData.status_list.map(item => {
-    const isMe = item.code === selectedCode;
+    const isMe    = item.code === selectedCode;
+    const onLeave = item.leave_status === 1;
+
+    if (onLeave) {
+      return `
+        <div class="tbl-row${isMe ? ' is-me' : ''} is-leave">
+          <span class="cell-code">${item.code}${isMe ? '<span class="me-tag">▶ 我</span>' : ''}</span>
+          <span class="cell-status"><span class="st-leave">🌴 休假</span></span>
+          <span class="cell-status"><span class="st-leave">🌴 休假</span></span>
+        </div>`;
+    }
 
     function cellHtml(time, late) {
       if (time) return `<span class="st-ok"><span class="st-ok-mark">✓</span><span class="st-time">${time}</span></span>`;
@@ -1038,84 +1096,104 @@ function renderSummary() {
   if (!currentData) return;
   const list = currentData.status_list;
   document.getElementById('statMorningOk').textContent =
-    list.filter(r => r.morning_time).length;
+    list.filter(r => r.morning_time || r.morning_late).length;
   document.getElementById('statEveningOk').textContent =
-    list.filter(r => r.evening_time).length;
+    list.filter(r => r.evening_time || r.evening_late).length;
+
+  const leaveCount = list.filter(r => r.leave_status === 1).length;
+  const leaveRow = document.getElementById('statLeaveRow');
+  if (leaveCount > 0) {
+    document.getElementById('statLeaveCount').textContent = leaveCount;
+    leaveRow.style.display = 'block';
+  } else {
+    leaveRow.style.display = 'none';
+  }
 }
 
-/* ─── 更新打卡按钮状态（含补打卡）─── */
+/* ─── 更新打卡按钮状态 ─── */
 function updateButtons() {
   const btnM  = document.getElementById('btnMorning');
-  const btnML = document.getElementById('btnMorningLate');
   const btnE  = document.getElementById('btnEvening');
-  const btnEL = document.getElementById('btnEveningLate');
+  const btnL  = document.getElementById('btnLate');
+  const btnLv = document.getElementById('btnLeave');
   const subM  = document.getElementById('subMorning');
-  const subML = document.getElementById('subMorningLate');
   const subE  = document.getElementById('subEvening');
-  const subEL = document.getElementById('subEveningLate');
+  const subL  = document.getElementById('subLate');
+  const subLv = document.getElementById('subLeave');
+  const txtL  = document.getElementById('btnLateText');
 
   // 重置
   [btnM, btnE].forEach(b => { b.classList.remove('btn-done'); b.disabled = true; });
-  [btnML, btnEL].forEach(b => { b.classList.remove('btn-done-late'); b.disabled = true; });
+  btnL.classList.remove('btn-done-late'); btnL.disabled = true;
+  btnLv.classList.remove('leave-taken');  btnLv.disabled = true;
   subM.textContent  = '06:00–09:30';
-  subML.textContent = '09:30–12:00';
   subE.textContent  = '20:30–22:00';
-  subEL.textContent = '22:00–00:00';
+  txtL.textContent  = '补打卡';
+  subL.textContent  = '不在补卡时段';
+  subLv.textContent = '选择后无需打卡';
 
   if (!selectedCode || !currentData) return;
 
   const { period, is_weekend, status_list } = currentData;
-  const mine = status_list.find(r => r.code === selectedCode);
+  const mine    = status_list.find(r => r.code === selectedCode);
+  const onLeave = mine?.leave_status === 1;
 
+  // ── 休息日 ──
   if (is_weekend) {
-    [subM, subML, subE, subEL].forEach(s => s.textContent = '今日无需打卡');
+    [subM, subE, subL, subLv].forEach(s => s.textContent = '今日无需打卡');
     return;
   }
 
   const morningDone = mine?.morning_time || mine?.morning_late;
   const eveningDone = mine?.evening_time || mine?.evening_late;
+  const anyDone     = morningDone || eveningDone;
 
   // ── 上午 ──
   if (morningDone) {
-    const isLate = !mine.morning_time && mine.morning_late;
-    if (isLate) {
-      btnML.disabled = true; btnML.classList.add('btn-done-late');
-      subML.textContent = '· ' + mine.morning_late;
-    } else {
-      btnM.disabled = true; btnM.classList.add('btn-done');
-      subM.textContent = '· ' + mine.morning_time;
-    }
-    subM.textContent  = isLate ? '已打卡' : '· ' + mine.morning_time;
-    subML.textContent = isLate ? '· ' + mine.morning_late : '已打卡';
-  } else if (period === 'morning') {
+    btnM.disabled = true; btnM.classList.add('btn-done');
+    subM.textContent = '· ' + (mine.morning_time || mine.morning_late + '(补)');
+  } else if (period === 'morning' && !onLeave) {
     btnM.disabled = false; subM.textContent = '· 进行中';
-    subML.textContent = '· 未到时间';
-  } else if (period === 'morning_late') {
-    subM.textContent = '· 已结束';
-    btnML.disabled = false; subML.textContent = '· 进行中';
   } else if (period === 'before_morning') {
-    subM.textContent = '· 未开始'; subML.textContent = '· 未到时间';
+    subM.textContent = '· 未开始';
   } else {
-    subM.textContent = '· 已结束'; subML.textContent = '· 已结束';
+    subM.textContent = '· 已结束';
   }
 
   // ── 晚上 ──
   if (eveningDone) {
-    const isLate = !mine.evening_time && mine.evening_late;
-    subE.textContent  = isLate ? '已打卡' : '· ' + mine.evening_time;
-    subEL.textContent = isLate ? '· ' + mine.evening_late : '已打卡';
-    if (isLate) { btnEL.disabled = true; btnEL.classList.add('btn-done-late'); }
-    else         { btnE.disabled  = true; btnE.classList.add('btn-done'); }
-  } else if (period === 'evening') {
+    btnE.disabled = true; btnE.classList.add('btn-done');
+    subE.textContent = '· ' + (mine.evening_time || mine.evening_late + '(补)');
+  } else if (period === 'evening' && !onLeave) {
     btnE.disabled = false; subE.textContent = '· 进行中';
-    subEL.textContent = '· 未到时间';
-  } else if (period === 'evening_late') {
-    subE.textContent = '· 已结束';
-    btnEL.disabled = false; subEL.textContent = '· 进行中';
   } else if (['before_morning','morning','morning_late','between'].includes(period)) {
-    subE.textContent = '· 未开始'; subEL.textContent = '· 未到时间';
+    subE.textContent = '· 未开始';
   } else {
-    subE.textContent = '· 已结束'; subEL.textContent = '· 已结束';
+    subE.textContent = '· 已结束';
+  }
+
+  // ── 补打卡（单按钮，自动判断时段）──
+  if (onLeave) {
+    subL.textContent = '今日已休假';
+  } else if (period === 'morning_late') {
+    if (morningDone) { subL.textContent = '上午已打卡'; }
+    else { btnL.disabled = false; txtL.textContent = '补打卡（上午）'; subL.textContent = '09:30–12:00'; }
+  } else if (period === 'evening_late') {
+    if (eveningDone) { subL.textContent = '晚上已打卡'; }
+    else { btnL.disabled = false; txtL.textContent = '补打卡（晚上）'; subL.textContent = '22:00–00:00'; }
+  }
+
+  // ── 今日休假 ──
+  if (onLeave) {
+    btnLv.disabled = true; btnLv.classList.add('leave-taken');
+    btnLv.querySelector('span:first-child').textContent = '🌴 今日已休假';
+    subLv.textContent = '';
+  } else if (anyDone) {
+    btnLv.disabled = true; subLv.textContent = '已打卡，不能标记休假';
+  } else if (!['morning','morning_late','between','evening','evening_late','before_morning'].includes(period)) {
+    subLv.textContent = '今日无需打卡';
+  } else {
+    btnLv.disabled = false;
   }
 }
 
@@ -1125,13 +1203,8 @@ async function doCheckin(period) {
     showNotif('请先选择您的编号', 'error'); return;
   }
 
-  const btnMap = {
-    morning:      'btnMorning',
-    morning_late: 'btnMorningLate',
-    evening:      'btnEvening',
-    evening_late: 'btnEveningLate',
-  };
-  const btn = document.getElementById(btnMap[period]);
+  const btnMap = { morning: 'btnMorning', evening: 'btnEvening', late: 'btnLate' };
+  const btn = document.getElementById(btnMap[period] || 'btnLate');
 
   btn.disabled = true;
 
@@ -1175,9 +1248,9 @@ function maybeShowModal(data) {
   if (data.is_rest_day) return;
   const { period, status_list, prev_evening_absent } = data;
 
-  // 12:00 后弹上午缺卡（between / evening / evening_late）
+  // 12:00 后弹上午缺卡（between / evening / evening_late），排除休假
   if (!morningModalShown && ['between','evening','evening_late'].includes(period)) {
-    const absent = status_list.filter(r => !r.morning_time && !r.morning_late).map(r => r.code);
+    const absent = status_list.filter(r => !r.morning_time && !r.morning_late && r.leave_status !== 1).map(r => r.code);
     if (absent.length) {
       morningModalShown = true;
       showAbsentModal('☀️ 上午缺卡提醒', '上午打卡时段（含补卡）已结束', absent);
@@ -1219,9 +1292,9 @@ function renderDayModal(data) {
     return;
   }
 
-  // 补卡也算已打卡
-  const morningAbsent = status_list.filter(r => !r.morning_time && !r.morning_late).map(r => r.code);
-  const eveningAbsent = status_list.filter(r => !r.evening_time && !r.evening_late).map(r => r.code);
+  // 补卡也算已打卡，休假不算缺卡
+  const morningAbsent = status_list.filter(r => !r.morning_time && !r.morning_late && r.leave_status !== 1).map(r => r.code);
+  const eveningAbsent = status_list.filter(r => !r.evening_time && !r.evening_late && r.leave_status !== 1).map(r => r.code);
 
   const chipsHtml = codes =>
     `<div class="absent-chips">${codes.map(c => `<span class="absent-chip">${c}</span>`).join('')}</div>`;
@@ -1360,6 +1433,41 @@ function renderWeekly({ days, total }) {
         </div>
       </div>`;
   }).join('');
+}
+
+/* ─── 休假功能 ─── */
+function requestLeave() {
+  if (!selectedCode) { showNotif('请先选择编号', 'error'); return; }
+  document.getElementById('leaveConfirmBg').classList.add('open');
+}
+
+function closeLeaveConfirm() {
+  document.getElementById('leaveConfirmBg').classList.remove('open');
+}
+
+function onLeaveConfirmBgClick(e) {
+  if (e.target === document.getElementById('leaveConfirmBg')) closeLeaveConfirm();
+}
+
+async function confirmLeave() {
+  closeLeaveConfirm();
+  if (!selectedCode) return;
+  try {
+    const res = await fetch('/api/leave', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: selectedCode }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showNotif('🌴 已标记今日休假', 'success');
+      await fetchStatus();
+    } else {
+      showNotif('❌ ' + data.error, 'error');
+    }
+  } catch {
+    showNotif('⚠️ 网络异常，请重试', 'error');
+  }
 }
 
 /* ─── 管理员面板 ─── */

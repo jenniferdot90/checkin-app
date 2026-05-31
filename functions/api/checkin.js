@@ -33,7 +33,7 @@ export async function onRequestPost({ env, request }) {
   const { code, period } = body ?? {};
   if (!code || !CODES.has(String(code))) return fail('编号不存在，请检查后重试');
 
-  const validPeriods = ['morning', 'morning_late', 'evening', 'evening_late'];
+  const validPeriods = ['morning', 'morning_late', 'evening', 'evening_late', 'late'];
   if (!validPeriods.includes(period)) return fail('时段参数错误');
 
   const now = new Date();
@@ -47,8 +47,15 @@ export async function onRequestPost({ env, request }) {
   const isRestDay    = isCalWeekend && !forceWorkday;
   if (isRestDay) return fail('今日为休息日，无需打卡');
 
-  // 时段时间校验
+  // 'late' 由服务器根据当前时间自动判断补卡类型
   const t = hours * 60 + minutes;
+  if (period === 'late') {
+    if (t >= 570 && t < 720)  period = 'morning_late';
+    else if (t >= 1320)        period = 'evening_late';
+    else return fail('当前不在补卡时段（上午补卡 09:30–12:00，晚上补卡 22:00–00:00）');
+  }
+
+  // 时段时间校验
   if (period === 'morning') {
     if (t < 360)  return fail('上午打卡尚未开始（06:00 才开始）');
     if (t >= 570) return fail('上午打卡时间已过（截止 09:30），可使用补打卡');
@@ -65,8 +72,11 @@ export async function onRequestPost({ env, request }) {
 
   // 查当日记录
   const existing = await env.DB.prepare(
-    'SELECT morning_time, morning_late, evening_time, evening_late FROM checkins WHERE date = ? AND code = ?'
+    'SELECT morning_time, morning_late, evening_time, evening_late, leave_status FROM checkins WHERE date = ? AND code = ?'
   ).bind(date, String(code)).first();
+
+  // 休假状态不允许打卡
+  if (existing?.leave_status === 1) return fail('今日已标记休假，无法打卡');
 
   const isMorningPeriod = period === 'morning' || period === 'morning_late';
   const isEveningPeriod = period === 'evening' || period === 'evening_late';

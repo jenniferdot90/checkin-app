@@ -48,7 +48,7 @@ export async function onRequestGet({ env }) {
 
   // 今日打卡记录
   const { results } = await env.DB.prepare(
-    'SELECT code, morning_time, morning_late, evening_time, evening_late FROM checkins WHERE date = ?'
+    'SELECT code, morning_time, morning_late, evening_time, evening_late, leave_status FROM checkins WHERE date = ?'
   ).bind(date).all();
 
   const rec = {};
@@ -56,10 +56,11 @@ export async function onRequestGet({ env }) {
 
   const statusList = CODES.map(code => ({
     code,
-    morning_time: rec[code]?.morning_time ?? null,
-    morning_late: rec[code]?.morning_late ?? null,
-    evening_time: rec[code]?.evening_time ?? null,
-    evening_late: rec[code]?.evening_late ?? null,
+    morning_time: rec[code]?.morning_time  ?? null,
+    morning_late: rec[code]?.morning_late  ?? null,
+    evening_time: rec[code]?.evening_time  ?? null,
+    evening_late: rec[code]?.evening_late  ?? null,
+    leave_status: rec[code]?.leave_status  ?? 0,
   }));
 
   // before_morning (00:00–05:59) 时，附带前一天晚上缺卡名单
@@ -74,11 +75,13 @@ export async function onRequestGet({ env }) {
 
     if (prevIsWorkday) {
       const { results: pr } = await env.DB.prepare(
-        'SELECT code, evening_time, evening_late FROM checkins WHERE date = ?'
+        'SELECT code, evening_time, evening_late, leave_status FROM checkins WHERE date = ?'
       ).bind(pStr).all();
       const pm = {};
       for (const r of pr) pm[r.code] = r;
-      prevEveningAbsent = CODES.filter(c => !pm[c]?.evening_time && !pm[c]?.evening_late);
+      prevEveningAbsent = CODES.filter(
+        c => !pm[c]?.evening_time && !pm[c]?.evening_late && !(pm[c]?.leave_status === 1)
+      );
     }
   }
 
