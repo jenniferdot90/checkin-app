@@ -30,7 +30,8 @@ export async function onRequestPost({ env, request }) {
   let body;
   try { body = await request.json(); } catch { return fail('请求格式错误，请发送 JSON'); }
 
-  const { code, period } = body ?? {};
+  const { code, period: rawPeriod } = body ?? {};
+  let period = rawPeriod;
   if (!code || !CODES.has(String(code))) return fail('编号不存在，请检查后重试');
 
   const validPeriods = ['morning', 'morning_late', 'evening', 'evening_late', 'late'];
