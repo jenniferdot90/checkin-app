@@ -856,19 +856,15 @@
         <div class="s-count">
           <span id="statMorningOk">-</span><span class="s-total"> / 21 人</span>
         </div>
-        <div class="s-label">上午已打卡</div>
+        <div class="s-label">上午已打卡<span id="statMorningLeave" style="display:none">（<span id="statLeaveCountM">0</span>人休假）</span></div>
       </div>
       <div class="summary-item">
         <div class="s-count">
           <span id="statEveningOk">-</span><span class="s-total"> / 21 人</span>
         </div>
-        <div class="s-label">晚上已打卡</div>
+        <div class="s-label">晚上已打卡<span id="statEveningLeave" style="display:none">（<span id="statLeaveCountE">0</span>人休假）</span></div>
       </div>
     </div>
-
-    <div id="statLeaveRow" style="display:none;font-size:11px;color:var(--text-sec);text-align:right;margin-bottom:6px;padding-right:2px">
-    今日 <span id="statLeaveCount">0</span> 人休假
-  </div>
 
   <div class="status-table">
       <div class="tbl-head">
@@ -944,6 +940,15 @@
         <button class="admin-toggle-btn" id="adminToggleBtn" onclick="toggleWorkday()">加载中…</button>
       </div>
       <div class="admin-note">开关仅对今日有效，次日 00:00 自动失效</div>
+      <div class="modal-subtitle" style="margin-top:16px;margin-bottom:8px;font-weight:500;color:var(--text)">── 休假管理 ──</div>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <select id="adminLeaveCode" class="admin-input" style="flex:1;padding:8px 10px;font-size:14px">
+          <option value="">选择编号</option>
+        </select>
+        <button class="admin-toggle-btn admin-toggle-off" style="white-space:nowrap" onclick="adminSetLeave('add')">标记休假</button>
+        <button class="admin-toggle-btn" style="background:#fee2e2;color:#b91c1c;white-space:nowrap" onclick="adminSetLeave('remove')">取消休假</button>
+      </div>
+      <div id="adminLeaveMsg" style="font-size:12px;color:var(--text-sec);min-height:16px"></div>
     </div>
     <button class="btn-close" onclick="closeAdminModal()">关闭</button>
   </div>
@@ -1002,7 +1007,6 @@ async function fetchStatus() {
     renderList();
     renderSummary();
     updateButtons();
-    maybeShowModal(data);
 
     document.getElementById('refreshSub').textContent = '每 30 秒自动刷新';
   } catch (e) {
@@ -1101,12 +1105,16 @@ function renderSummary() {
     list.filter(r => r.evening_time || r.evening_late).length;
 
   const leaveCount = list.filter(r => r.leave_status === 1).length;
-  const leaveRow = document.getElementById('statLeaveRow');
+  const morningLeave = document.getElementById('statMorningLeave');
+  const eveningLeave = document.getElementById('statEveningLeave');
   if (leaveCount > 0) {
-    document.getElementById('statLeaveCount').textContent = leaveCount;
-    leaveRow.style.display = 'block';
+    document.getElementById('statLeaveCountM').textContent = leaveCount;
+    document.getElementById('statLeaveCountE').textContent = leaveCount;
+    morningLeave.style.display = '';
+    eveningLeave.style.display = '';
   } else {
-    leaveRow.style.display = 'none';
+    morningLeave.style.display = 'none';
+    eveningLeave.style.display = 'none';
   }
 }
 
@@ -1240,38 +1248,6 @@ function showNotif(msg, type) {
   notifTimer = setTimeout(() => { el.style.display = 'none'; }, 4500);
 }
 
-/* ─── 缺卡弹窗（自动 + 本日按钮共用）─── */
-let morningModalShown  = false;
-let eveningModalShown  = false;
-
-function maybeShowModal(data) {
-  if (data.is_rest_day) return;
-  const { period, status_list, prev_evening_absent } = data;
-
-  // 12:00 后弹上午缺卡（between / evening / evening_late），排除休假
-  if (!morningModalShown && ['between','evening','evening_late'].includes(period)) {
-    const absent = status_list.filter(r => !r.morning_time && !r.morning_late && r.leave_status !== 1).map(r => r.code);
-    if (absent.length) {
-      morningModalShown = true;
-      showAbsentModal('☀️ 上午缺卡提醒', '上午打卡时段（含补卡）已结束', absent);
-    }
-  }
-
-  // before_morning：弹前一天晚上缺卡
-  if (!eveningModalShown && period === 'before_morning' && prev_evening_absent?.length) {
-    eveningModalShown = true;
-    showAbsentModal('🌙 昨晚缺卡提醒', '昨日晚上打卡时段（含补卡）已结束', prev_evening_absent);
-  }
-}
-
-function showAbsentModal(title, subtitle, absent) {
-  document.getElementById('modalTitle').textContent    = title;
-  document.getElementById('modalSubtitle').textContent = subtitle;
-  document.getElementById('modalContent').innerHTML =
-    `<div class="absent-chips">${absent.map(c => `<span class="absent-chip">${c}</span>`).join('')}</div>`;
-  document.getElementById('modalBg').classList.add('open');
-}
-
 /* ─── 本日缺卡弹窗 ─── */
 function openDayModal() {
   if (!currentData) { showNotif('数据加载中，请稍候', 'error'); return; }
@@ -1325,9 +1301,17 @@ function renderDayModal(data) {
     eHtml = chipsHtml(eveningAbsent);
   }
 
+  const leaveList  = status_list.filter(r => r.leave_status === 1).map(r => r.code);
+  const leaveHtml  = leaveList.length
+    ? `<div class="day-section-label" style="margin-top:14px">🌴 今日休假</div>` +
+      `<div class="absent-chips">${leaveList.map(c =>
+        `<span class="absent-chip" style="background:#f3e8ff;color:#7c3aed">${c}</span>`).join('')}</div>`
+    : '';
+
   document.getElementById('modalContent').innerHTML =
     `<div class="day-section-label">☀️ 上午缺卡</div>${mHtml}` +
-    `<div class="day-section-label" style="margin-top:14px">🌙 晚上缺卡</div>${eHtml}`;
+    `<div class="day-section-label" style="margin-top:14px">🌙 晚上缺卡</div>${eHtml}` +
+    leaveHtml;
 }
 
 function closeModal() {
@@ -1390,23 +1374,27 @@ function renderWeekly({ days, total }) {
 
   const weekPending = txt => `<span class="week-count pending">${txt}</span>`;
 
-  const weekCount = (count, absent) => {
+  const weekCount = (count, absent, leaveCount) => {
     const cls   = count === total ? 'all-ok' : 'partial';
     const text  = `${count}/${total}${count === total ? ' 🎉' : ''}`;
+    const leaveNote = leaveCount > 0
+      ? `<span style="font-size:10px;color:var(--text-sec);margin-left:4px">（${leaveCount}人休假）</span>`
+      : '';
     const chips = absent.length
       ? `<div class="week-absent-wrap">${absent.map(c =>
           `<span class="week-chip">${c}</span>`).join('')}</div>` : '';
-    return `<span class="week-count ${cls}">${text}</span>${chips}`;
+    return `<span class="week-count ${cls}">${text}</span>${leaveNote}${chips}`;
   };
 
   document.getElementById('weekContent').innerHTML = days.map(d => {
     const dateShort = d.date.slice(5).replace('-', '/');
     const todayTag  = d.is_today ? '<span class="today-tag">今日</span>' : '';
+    const leaveCount = (d.leave_list || []).length;
 
     // 上午：今日时段未结束时不显示缺卡
     const mHtml = d.is_today && ['before_morning','morning'].includes(period)
       ? weekPending('打卡时段尚未结束（09:30 截止）')
-      : weekCount(d.morning_count, d.morning_absent);
+      : weekCount(d.morning_count, d.morning_absent, leaveCount);
 
     // 晚上：今日时段未结束时不显示缺卡
     let eHtml;
@@ -1415,8 +1403,16 @@ function renderWeekly({ days, total }) {
     } else if (d.is_today && period === 'evening') {
       eHtml = weekPending('打卡时段进行中（22:00 截止）');
     } else {
-      eHtml = weekCount(d.evening_count, d.evening_absent);
+      eHtml = weekCount(d.evening_count, d.evening_absent, leaveCount);
     }
+
+    const leaveChips = (d.leave_list || []).length
+      ? `<div class="week-session">
+           <div class="week-session-label">🌴 休假</div>
+           <div class="week-absent-wrap">${(d.leave_list || []).map(c =>
+             `<span class="week-chip" style="background:#f3e8ff;color:#7c3aed">${c}</span>`).join('')}</div>
+         </div>`
+      : '';
 
     return `
       <div class="week-day">
@@ -1431,6 +1427,7 @@ function renderWeekly({ days, total }) {
           <div class="week-session-label">🌙 晚上打卡</div>
           ${eHtml}
         </div>
+        ${leaveChips}
       </div>`;
   }).join('');
 }

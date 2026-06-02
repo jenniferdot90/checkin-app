@@ -40,7 +40,7 @@ export async function onRequestGet({ env }) {
 
   const placeholders = workdays.map(() => '?').join(',');
   const { results } = await env.DB.prepare(
-    `SELECT date, code, morning_time, morning_late, evening_time, evening_late
+    `SELECT date, code, morning_time, morning_late, evening_time, evening_late, leave_status
      FROM checkins WHERE date IN (${placeholders})`
   ).bind(...workdays.map(w => w.date)).all();
 
@@ -53,16 +53,18 @@ export async function onRequestGet({ env }) {
   const days = workdays.map(w => {
     const recs = recordMap[w.date] || {};
     // 正常打卡或补打卡都算已打卡
-    const morningAbsent = CODES.filter(c => !recs[c]?.morning_time && !recs[c]?.morning_late);
-    const eveningAbsent = CODES.filter(c => !recs[c]?.evening_time && !recs[c]?.evening_late);
+    const leaveList    = CODES.filter(c => recs[c]?.leave_status === 1);
+    const morningAbsent = CODES.filter(c => !recs[c]?.morning_time && !recs[c]?.morning_late && recs[c]?.leave_status !== 1);
+    const eveningAbsent = CODES.filter(c => !recs[c]?.evening_time && !recs[c]?.evening_late && recs[c]?.leave_status !== 1);
     return {
-      date:          w.date,
-      day_name:      w.dayName,
-      is_today:      w.date === todayStr,
-      morning_count: CODES.length - morningAbsent.length,
-      evening_count: CODES.length - eveningAbsent.length,
+      date:           w.date,
+      day_name:       w.dayName,
+      is_today:       w.date === todayStr,
+      morning_count:  CODES.length - morningAbsent.length - leaveList.length,
+      evening_count:  CODES.length - eveningAbsent.length - leaveList.length,
       morning_absent: morningAbsent,
       evening_absent: eveningAbsent,
+      leave_list:     leaveList,
     };
   });
 
