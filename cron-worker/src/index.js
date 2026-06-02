@@ -97,16 +97,21 @@ async function sendPushPlus(env, absentCodes, periodLabel, deadline, lateDeadlin
       `<a href="https://tzgafazhi.fun">→ 点此立即打卡</a>`;
 
     try {
+      const payload = {
+        token:    env.PUSHPLUS_TOKEN,
+        title:    `⏰ 打卡提醒·${periodLabel}`,
+        content,
+        template: 'html',
+      };
+      // 自发自收时省略 to，否则 PushPlus 报 999
+      if (user.pushplus_token !== env.PUSHPLUS_TOKEN) {
+        payload.to = user.pushplus_token;
+      }
+
       const res = await fetch('https://www.pushplus.plus/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token:    env.PUSHPLUS_TOKEN,
-          to:       user.pushplus_token,
-          title:    `⏰ 打卡提醒·${periodLabel}`,
-          content,
-          template: 'html',
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.code === 200) {
