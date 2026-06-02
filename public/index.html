@@ -773,6 +773,35 @@
     }
 
     .btn-close:active { opacity: 0.85; }
+
+    /* ─── 微信提醒绑定入口 ─── */
+    .wechat-bind-entry {
+      text-align: center;
+      padding: 6px 0 4px;
+    }
+    .wechat-bind-entry button {
+      background: none;
+      border: none;
+      color: var(--text-sec);
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      padding: 6px 12px;
+      border-radius: 20px;
+      transition: background 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .wechat-bind-entry button:active { background: var(--gray-light); }
+
+    /* 绑定弹窗内步骤列表 */
+    .bind-steps {
+      font-size: 12px;
+      color: var(--text-sec);
+      padding-left: 18px;
+      margin: 8px 0 0;
+      line-height: 2;
+    }
+    .bind-steps li { margin-bottom: 2px; }
   </style>
 </head>
 <body>
@@ -878,6 +907,11 @@
     </div>
   </div>
 
+  <!-- 微信提醒绑定入口 -->
+  <div class="wechat-bind-entry">
+    <button onclick="openBindModal()">🔔 绑定微信提醒</button>
+  </div>
+
 </div><!-- /page-wrap -->
 
 <!-- ══════════ 底部状态栏 ══════════ -->
@@ -918,6 +952,39 @@
               onclick="closeLeaveConfirm()">取消</button>
       <button class="btn-close" onclick="confirmLeave()">确认休假</button>
     </div>
+  </div>
+</div>
+
+<!-- ══════════ 微信提醒绑定弹窗 ══════════ -->
+<div class="modal-bg" id="bindModalBg" onclick="onBindBgClick(event)">
+  <div class="modal-box">
+    <div class="modal-title">🔔 绑定微信打卡提醒</div>
+    <div class="modal-subtitle">绑定后，工作日 09:15 / 21:45 若未打卡将自动推送微信通知</div>
+
+    <div style="margin-bottom:12px">
+      <div class="card-title">选择我的编号</div>
+      <div class="select-wrap">
+        <select id="bindCodeSelect">
+          <option value="">-- 请选择编号 --</option>
+        </select>
+        <span class="select-arrow">▾</span>
+      </div>
+    </div>
+
+    <div id="bindStatusArea" style="min-height:60px"></div>
+
+    <details style="margin-top:14px;border:1px solid var(--gray-border);border-radius:8px;padding:10px 12px">
+      <summary style="font-size:12px;color:var(--text-sec);cursor:pointer;user-select:none">❓ 如何绑定？（点击展开步骤）</summary>
+      <ol class="bind-steps">
+        <li>微信关注公众号 <b>「pushplus 推送加」</b></li>
+        <li>访问 <b>pushplus.plus</b>，微信扫码登录</li>
+        <li>扫描管理员发给你的 <b>好友邀请二维码</b>（必须，否则收不到消息）</li>
+        <li>进入 <b>个人中心</b>，复制你的 Token（32 位字符串）</li>
+        <li>在上方选择自己的编号，粘贴 Token，点绑定</li>
+      </ol>
+    </details>
+
+    <button class="btn-close" onclick="closeBindModal()" style="margin-top:16px">关闭</button>
   </div>
 </div>
 
@@ -1700,6 +1767,116 @@ async function fireLocalNotif(period) {
     renotify: true,
     data:     { url: '/' },
   });
+}
+
+/* ─── 微信提醒绑定 ─── */
+function openBindModal() {
+  document.getElementById('bindModalBg').classList.add('open');
+  const sel = document.getElementById('bindCodeSelect');
+  if (sel.options.length <= 1) {
+    CODES.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = opt.textContent = c;
+      sel.appendChild(opt);
+    });
+  }
+  sel.onchange = () => loadBindStatus(sel.value);
+  if (selectedCode && !sel.value) sel.value = selectedCode;
+  if (sel.value) loadBindStatus(sel.value);
+  else document.getElementById('bindStatusArea').innerHTML = '';
+}
+
+function closeBindModal() {
+  document.getElementById('bindModalBg').classList.remove('open');
+}
+
+function onBindBgClick(e) {
+  if (e.target === document.getElementById('bindModalBg')) closeBindModal();
+}
+
+async function loadBindStatus(code) {
+  const area = document.getElementById('bindStatusArea');
+  if (!code) { area.innerHTML = ''; return; }
+  area.innerHTML = '<div style="font-size:13px;color:var(--text-sec);padding:8px 0">查询中…</div>';
+  try {
+    const res  = await fetch('/api/check-bind', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    const data = await res.json();
+    renderBindStatus(code, data.bound);
+  } catch {
+    area.innerHTML = '<div style="font-size:13px;color:var(--red);padding:8px 0">查询失败，请重试</div>';
+  }
+}
+
+function renderBindStatus(code, bound) {
+  const area = document.getElementById('bindStatusArea');
+  if (bound) {
+    area.innerHTML = `
+      <div style="background:var(--green-light);border-radius:8px;padding:10px 14px;font-size:13px;color:#15803d;margin-bottom:10px">
+        ✅ 编号 ${code} 已绑定微信提醒
+      </div>
+      <div style="font-size:12px;color:var(--text-sec);margin-bottom:8px">如需更换，粘贴新 Token 后点「更新绑定」：</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <input type="text" id="bindTokenInput" class="admin-input" placeholder="粘贴新 Token" autocomplete="off" style="flex:1">
+        <button class="btn-close" style="width:auto;padding:0 14px;font-size:13px" onclick="submitBind('${code}')">更新绑定</button>
+      </div>
+      <button onclick="submitUnbind('${code}')"
+        style="font-size:12px;color:var(--red);background:none;border:none;cursor:pointer;padding:0;font-family:inherit;text-decoration:underline">
+        取消绑定
+      </button>`;
+  } else {
+    area.innerHTML = `
+      <div class="card-title">粘贴你的 PushPlus Token</div>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="bindTokenInput" class="admin-input" placeholder="粘贴 Token（32 位字符串）" autocomplete="off" style="flex:1">
+        <button class="btn-close" style="width:auto;padding:0 14px;font-size:13px" onclick="submitBind('${code}')">绑定</button>
+      </div>`;
+  }
+}
+
+async function submitBind(code) {
+  const input = document.getElementById('bindTokenInput');
+  const token = input?.value?.trim();
+  if (!token) { showNotif('请先粘贴 Token', 'error'); return; }
+  try {
+    const res  = await fetch('/api/bind-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, token }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      if (input) input.value = '';  // 清除输入框，不留残影
+      showNotif('✅ 绑定成功，将在下次打卡截止前收到提醒', 'success');
+      renderBindStatus(code, true);
+    } else {
+      showNotif('❌ ' + data.error, 'error');
+    }
+  } catch {
+    showNotif('⚠️ 网络异常，请重试', 'error');
+  }
+}
+
+async function submitUnbind(code) {
+  try {
+    const res  = await fetch('/api/unbind-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showNotif('已取消绑定', 'success');
+      renderBindStatus(code, false);
+    } else {
+      showNotif('❌ ' + data.error, 'error');
+    }
+  } catch {
+    showNotif('⚠️ 网络异常，请重试', 'error');
+  }
 }
 
 /* ─── 启动 ─── */

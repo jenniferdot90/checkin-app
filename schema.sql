@@ -20,3 +20,9 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   auth       TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+-- 微信提醒绑定表（存编号 → PushPlus 好友 Token 的对应关系）
+CREATE TABLE IF NOT EXISTS users (
+  code            TEXT PRIMARY KEY,
+  pushplus_token  TEXT
+);
