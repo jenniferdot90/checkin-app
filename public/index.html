@@ -774,25 +774,6 @@
 
     .btn-close:active { opacity: 0.85; }
 
-    /* ─── 微信提醒绑定入口 ─── */
-    .wechat-bind-entry {
-      text-align: center;
-      padding: 6px 0 4px;
-    }
-    .wechat-bind-entry button {
-      background: none;
-      border: none;
-      color: var(--text-sec);
-      font-size: 12px;
-      cursor: pointer;
-      font-family: inherit;
-      padding: 6px 12px;
-      border-radius: 20px;
-      transition: background 0.15s;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .wechat-bind-entry button:active { background: var(--gray-light); }
-
     /* 绑定弹窗内步骤列表 */
     .bind-steps {
       font-size: 12px;
@@ -862,9 +843,9 @@
       已记住编号 <strong id="codeHintNum"></strong> &nbsp;
       <button onclick="switchCode()">切换编号</button>
     </div>
-    <div class="notif-row" id="notifRow" style="display:none">
-      <span class="notif-desc" id="notifDesc">🔔 开启后截止前 15 分钟弹提醒（页面保持后台运行；已添加到桌面效果更佳）</span>
-      <button class="btn-notif btn-notif-on" id="btnPush" onclick="toggleLocalReminder()">开启提醒</button>
+    <div class="notif-row">
+      <span class="notif-desc">🔔 绑定微信后：每日 20:30 全员提醒，09:15 / 21:45 未打卡单独提醒</span>
+      <button class="btn-notif btn-notif-on" onclick="openBindModal()">绑定微信</button>
     </div>
   </div>
 
@@ -907,10 +888,6 @@
     </div>
   </div>
 
-  <!-- 微信提醒绑定入口 -->
-  <div class="wechat-bind-entry">
-    <button onclick="openBindModal()">🔔 绑定微信提醒</button>
-  </div>
 
 </div><!-- /page-wrap -->
 
@@ -959,7 +936,7 @@
 <div class="modal-bg" id="bindModalBg" onclick="onBindBgClick(event)">
   <div class="modal-box">
     <div class="modal-title">🔔 绑定微信打卡提醒</div>
-    <div class="modal-subtitle">由管理员统一绑定，绑定后工作日 09:15 / 21:45 若未打卡自动推送微信通知</div>
+    <div class="modal-subtitle">绑定后每个工作日自动推送：20:30 全员提醒 · 09:15 / 21:45 未打卡单独提醒</div>
 
     <div style="margin-bottom:12px">
       <div class="card-title">选择编号</div>
@@ -1622,28 +1599,16 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(console.error);
 }
 
-/* ─── 固定编号 & 通知行 ─── */
+/* ─── 固定编号 ─── */
 function updateCodeHint() {
   const hint = document.getElementById('codeHint');
   const num  = document.getElementById('codeHintNum');
   if (selectedCode) {
     hint.style.display = 'block';
     num.textContent = selectedCode;
-    // Notification API 比 PushManager 支持范围更广
-    if (notifSupported()) {
-      document.getElementById('notifRow').style.display = 'flex';
-      refreshNotifButton();
-    } else {
-      document.getElementById('notifRow').style.display = 'none';
-    }
   } else {
     hint.style.display = 'none';
-    document.getElementById('notifRow').style.display = 'none';
   }
-}
-
-function notifSupported() {
-  return window.isSecureContext && 'Notification' in window && 'serviceWorker' in navigator;
 }
 
 function switchCode() {
@@ -1654,121 +1619,6 @@ function switchCode() {
   sel.parentElement.style.display = 'block';
   updateCodeHint();
   sel.focus();
-}
-
-/* ─── 本地通知（不依赖 FCM / Web Push）─── */
-
-let _reminderTimers = [];
-
-function refreshNotifButton() {
-  const btn = document.getElementById('btnPush');
-  if (Notification.permission === 'denied') {
-    btn.textContent = '通知权限已拒绝';
-    btn.className   = 'btn-notif btn-notif-off';
-    btn.disabled    = true;
-    btn.onclick     = null;
-    return;
-  }
-  if (localStorage.getItem('reminder_code') === selectedCode
-      && Notification.permission === 'granted') {
-    btn.textContent = '✅ 提醒已开启';
-    btn.className   = 'btn-notif btn-notif-ok';
-    btn.disabled    = false;
-    btn.onclick     = cancelLocalReminder;
-  } else {
-    btn.textContent = '🔔 开启提醒';
-    btn.className   = 'btn-notif btn-notif-on';
-    btn.disabled    = false;
-    btn.onclick     = toggleLocalReminder;
-  }
-}
-
-async function toggleLocalReminder() {
-  if (!selectedCode) { showNotif('请先选择编号', 'error'); return; }
-
-  let perm = Notification.permission;
-  if (perm === 'default') perm = await Notification.requestPermission();
-  if (perm !== 'granted') {
-    showNotif('请在浏览器/系统设置中允许通知权限', 'error');
-    refreshNotifButton();
-    return;
-  }
-
-  localStorage.setItem('reminder_code', selectedCode);
-
-  // 把编号存给 SW，用于 Periodic Background Sync 后台唤醒时使用
-  const reg = await navigator.serviceWorker.ready;
-  reg.active?.postMessage({ type: 'SAVE_CODE', code: selectedCode });
-
-  // 注册 Periodic Background Sync（Chrome Android 安装 PWA 后后台唤醒，无需 FCM）
-  if ('periodicSync' in reg) {
-    try {
-      const status = await navigator.permissions.query({ name: 'periodic-background-sync' });
-      if (status.state === 'granted') {
-        await reg.periodicSync.register('checkin-check', { minInterval: 15 * 60 * 1000 });
-      }
-    } catch { /* 不支持则跳过，只依赖前台定时器 */ }
-  }
-
-  scheduleLocalTimers();
-  showNotif('✅ 提醒已开启，页面保持运行时将在截止前 15 分钟弹出通知', 'success');
-  refreshNotifButton();
-}
-
-async function cancelLocalReminder() {
-  localStorage.removeItem('reminder_code');
-  _reminderTimers.forEach(clearTimeout);
-  _reminderTimers = [];
-  try {
-    const reg = await navigator.serviceWorker.ready;
-    if ('periodicSync' in reg) await reg.periodicSync.unregister('checkin-check').catch(() => {});
-  } catch { /* ignore */ }
-  showNotif('提醒已关闭', 'success');
-  refreshNotifButton();
-}
-
-function scheduleLocalTimers() {
-  _reminderTimers.forEach(clearTimeout);
-  _reminderTimers = [];
-
-  const now  = new Date();
-  const off8 = now.getTime() + 8 * 3600 * 1000;
-  const u8   = new Date(off8);
-  const [y, mo, d] = u8.toISOString().slice(0, 10).split('-').map(Number);
-
-  // 北京 09:15 → UTC 01:15
-  const morningUTC = Date.UTC(y, mo - 1, d, 1, 15, 0);
-  // 北京 21:45 → UTC 13:45
-  const eveningUTC = Date.UTC(y, mo - 1, d, 13, 45, 0);
-  const nowUTC = now.getTime();
-
-  if (morningUTC > nowUTC)
-    _reminderTimers.push(setTimeout(() => fireLocalNotif('morning'), morningUTC - nowUTC));
-  if (eveningUTC > nowUTC)
-    _reminderTimers.push(setTimeout(() => fireLocalNotif('evening'), eveningUTC - nowUTC));
-}
-
-
-async function fireLocalNotif(period) {
-  const code = localStorage.getItem('reminder_code');
-  if (!code || Notification.permission !== 'granted') return;
-
-  if (currentData) {
-    const mine = currentData.status_list?.find(r => r.code === code);
-    const tf   = period === 'morning' ? 'morning_time' : 'evening_time';
-    if (mine?.[tf]) return; // 已打卡，不提醒
-  }
-
-  const label    = period === 'morning' ? '上午' : '晚上';
-  const deadline = period === 'morning' ? '09:30' : '22:00';
-  const reg      = await navigator.serviceWorker.ready;
-  reg.showNotification('⏰ 打卡提醒', {
-    body:     `${label}打卡还有 15 分钟截止（${deadline}），你（编号 ${code}）还没打卡`,
-    icon:     '/icons/icon-192.png',
-    tag:      `checkin-${period}`,
-    renotify: true,
-    data:     { url: '/' },
-  });
 }
 
 /* ─── 微信提醒绑定 ─── */
@@ -1883,10 +1733,6 @@ async function submitUnbind(code) {
 
 /* ─── 启动 ─── */
 updateCodeHint();
-// 页面刷新后重建本地定时器（若已开启提醒）
-if (localStorage.getItem('reminder_code') && Notification.permission === 'granted') {
-  scheduleLocalTimers();
-}
 fetchStatus().then(startCountdown);
 </script>
 </body>
