@@ -959,10 +959,10 @@
 <div class="modal-bg" id="bindModalBg" onclick="onBindBgClick(event)">
   <div class="modal-box">
     <div class="modal-title">🔔 绑定微信打卡提醒</div>
-    <div class="modal-subtitle">绑定后，工作日 09:15 / 21:45 若未打卡将自动推送微信通知</div>
+    <div class="modal-subtitle">由管理员统一绑定，绑定后工作日 09:15 / 21:45 若未打卡自动推送微信通知</div>
 
     <div style="margin-bottom:12px">
-      <div class="card-title">选择我的编号</div>
+      <div class="card-title">选择编号</div>
       <div class="select-wrap">
         <select id="bindCodeSelect">
           <option value="">-- 请选择编号 --</option>
@@ -974,14 +974,16 @@
     <div id="bindStatusArea" style="min-height:60px"></div>
 
     <details style="margin-top:14px;border:1px solid var(--gray-border);border-radius:8px;padding:10px 12px">
-      <summary style="font-size:12px;color:var(--text-sec);cursor:pointer;user-select:none">❓ 如何绑定？（点击展开步骤）</summary>
+      <summary style="font-size:12px;color:var(--text-sec);cursor:pointer;user-select:none">❓ 如何接收提醒？（点击展开）</summary>
       <ol class="bind-steps">
         <li>微信关注公众号 <b>「pushplus 推送加」</b></li>
-        <li>访问 <b>pushplus.plus</b>，微信扫码登录</li>
-        <li>扫描管理员发给你的 <b>好友邀请二维码</b>（必须，否则收不到消息）</li>
-        <li>进入 <b>个人中心</b>，复制你的 Token（32 位字符串）</li>
-        <li>在上方选择自己的编号，粘贴 Token，点绑定</li>
+        <li>用微信扫描管理员发给你的 <b>好友邀请二维码</b>，添加好友</li>
+        <li>完成后告知管理员，由管理员在此页面完成绑定</li>
+        <li>下次未打卡时将自动收到微信提醒</li>
       </ol>
+      <div style="margin-top:8px;font-size:11px;color:var(--amber);background:var(--amber-light);border-radius:6px;padding:6px 10px">
+        ⚠️ 管理员：在 PushPlus 好友列表找到该人的 <b>「好友令牌」</b>，粘贴到上方输入框绑定（非用户个人中心的 Token）
+      </div>
     </details>
 
     <button class="btn-close" onclick="closeBindModal()" style="margin-top:16px">关闭</button>
