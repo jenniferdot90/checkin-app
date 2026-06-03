@@ -19,7 +19,10 @@ function pad(n) { return String(n).padStart(2, '0'); }
 export default {
   async scheduled(event, env, ctx) {
     const cron   = event.cron;
-    const period = cron.startsWith('15 1') ? 'morning' : 'evening';
+    // 北京时间：09:15 上午缺卡提醒 / 20:30 晚上打卡开始通知 / 21:45 晚上缺卡提醒
+    const period = cron.startsWith('15 1')  ? 'morning'
+                 : cron.startsWith('30 12') ? 'evening_open'
+                 : 'evening';
 
     const now = new Date();
     const { year, month, day, dayOfWeek } = toUTC8(now);
@@ -35,6 +38,18 @@ export default {
         console.log(`[${date}] 今日为休息日，跳过推送`);
         return;
       }
+    }
+
+    // 20:30 全员开始提醒：向所有已绑定且未休假的人推送
+    if (period === 'evening_open') {
+      const { results: checkins } = await env.DB.prepare(
+        `SELECT code, leave_status FROM checkins WHERE date = ?`
+      ).bind(date).all();
+      const leaveSet = new Set(checkins.filter(r => r.leave_status === 1).map(r => r.code));
+      const targetCodes = CODES.filter(c => !leaveSet.has(c));
+      console.log(`[${date}] 20:30 晚上打卡开始，推送 ${targetCodes.length} 人`);
+      await sendPushPlusOpen(env, targetCodes);
+      return;
     }
 
     const timeField = period === 'morning' ? 'morning_time' : 'evening_time';
@@ -68,6 +83,39 @@ export default {
     }
   },
 };
+
+// ── 20:30 全员开始提醒 ────────────────────────────────────────
+async function sendPushPlusOpen(env, targetCodes) {
+  if (!env.PUSHPLUS_TOKEN) return;
+
+  const { results: users } = await env.DB.prepare(
+    `SELECT code, pushplus_token FROM users
+     WHERE code IN (${targetCodes.map(() => '?').join(',')})
+       AND pushplus_token IS NOT NULL AND pushplus_token != ''`
+  ).bind(...targetCodes).all();
+
+  if (!users.length) { console.log('20:30 无已绑定用户，跳过'); return; }
+
+  let sent = 0, failed = 0;
+  for (const user of users) {
+    const content =
+      `【打卡提醒】晚上打卡时间到啦！<br>` +
+      `打卡窗口 <b>20:30–22:00</b>，请及时打卡。<br><br>` +
+      `<a href="https://tzgafazhi.fun">→ 点此立即打卡</a>`;
+    try {
+      const payload = { token: env.PUSHPLUS_TOKEN, title: '🌙 晚上打卡开始啦', content, template: 'html' };
+      if (user.pushplus_token !== env.PUSHPLUS_TOKEN) payload.to = user.pushplus_token;
+      const res  = await fetch('https://www.pushplus.plus/send', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.code === 200) { sent++; console.log(`✅ 20:30 推送成功 ${user.code}`); }
+      else { failed++; console.error(`❌ 20:30 推送失败 ${user.code}: ${data.msg}`); }
+    } catch (e) { failed++; console.error(`❌ 20:30 推送异常 ${user.code}: ${e.message}`); }
+    await new Promise(r => setTimeout(r, 100));
+  }
+  console.log(`20:30 推送完成 | 成功:${sent} 失败:${failed} 未绑定:${targetCodes.length - users.length}`);
+}
 
 // ── PushPlus 微信推送 ─────────────────────────────────────────
 async function sendPushPlus(env, absentCodes, periodLabel, deadline, lateDeadline) {
