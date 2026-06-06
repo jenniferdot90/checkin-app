@@ -19,9 +19,11 @@ function pad(n) { return String(n).padStart(2, '0'); }
 export default {
   async scheduled(event, env, ctx) {
     const cron   = event.cron;
-    // 北京时间：09:15 上午缺卡提醒 / 20:30 晚上打卡开始通知 / 21:45 晚上缺卡提醒
-    const period = cron.startsWith('15 1')  ? 'morning'
-                 : cron.startsWith('30 12') ? 'evening_open'
+    // 北京时间：09:15 上午缺卡提醒 / 10:00 上午汇总给320 / 20:30 晚上开始通知 / 21:45 晚上缺卡提醒 / 22:15 晚上汇总给320
+    const period = cron.startsWith('15 1 ')  ? 'morning'
+                 : cron.startsWith('0 2')    ? 'morning_summary'
+                 : cron.startsWith('30 12')  ? 'evening_open'
+                 : cron.startsWith('15 14')  ? 'evening_summary'
                  : 'evening';
 
     const now = new Date();
@@ -38,6 +40,30 @@ export default {
         console.log(`[${date}] 今日为休息日，跳过推送`);
         return;
       }
+    }
+
+    // 10:00 上午汇总 / 22:15 晚上汇总：向编号320推送仍未打卡名单
+    if (period === 'morning_summary' || period === 'evening_summary') {
+      const isMorning  = period === 'morning_summary';
+      const timeField  = isMorning ? 'morning_time'  : 'evening_time';
+      const lateField  = isMorning ? 'morning_late'  : 'evening_late';
+      const timeLabel  = isMorning ? '上午10:00' : '晚上22:15';
+      const { results: checkins } = await env.DB.prepare(
+        `SELECT code, ${timeField}, ${lateField}, leave_status FROM checkins WHERE date = ?`
+      ).bind(date).all();
+      const checkinMap = {};
+      for (const r of checkins) checkinMap[r.code] = r;
+      const absentCodes = CODES.filter(code => {
+        const r = checkinMap[code];
+        if (r?.leave_status === 1) return false;
+        if (r?.[timeField] || r?.[lateField]) return false;
+        return true;
+      });
+      console.log(`[${date}] ${timeLabel} 仍未打卡 ${absentCodes.length} 人: ${absentCodes.join(', ') || '无'}`);
+      if (absentCodes.length > 0) {
+        await sendSummaryTo320(env, absentCodes, date, timeLabel);
+      }
+      return;
     }
 
     // 20:30 全员开始提醒：向所有已绑定且未休假的人推送
@@ -79,7 +105,6 @@ export default {
 
     if (absentCodes.length > 0) {
       await sendPushPlus(env, absentCodes, periodLabel, deadline, lateDeadline);
-      await sendWebPushAll(env, date, timeField, lateField, periodLabel, deadline);
     }
   },
 };
@@ -87,6 +112,7 @@ export default {
 // ── 20:30 全员开始提醒 ────────────────────────────────────────
 async function sendPushPlusOpen(env, targetCodes) {
   if (!env.PUSHPLUS_TOKEN) return;
+  if (!targetCodes.length) { console.log('20:30 全部休假，跳过'); return; }
 
   const { results: users } = await env.DB.prepare(
     `SELECT code, pushplus_token FROM users
@@ -227,5 +253,45 @@ async function sendWebPushAll(env, date, timeField, lateField, periodLabel, dead
     await Promise.all(failed.map(code =>
       env.DB.prepare('DELETE FROM push_subscriptions WHERE code = ?').bind(code).run()
     ));
+  }
+}
+
+// ── 22:15 汇总推送给编号320 ───────────────────────────────────────
+async function sendSummaryTo320(env, absentCodes, date, timeLabel) {
+  if (!env.PUSHPLUS_TOKEN) return;
+
+  const user320 = await env.DB.prepare(
+    `SELECT pushplus_token FROM users WHERE code = '320' AND pushplus_token IS NOT NULL AND pushplus_token != ''`
+  ).first();
+
+  if (!user320) {
+    console.log('编号320未绑定 pushplus_token，跳过汇总推送');
+    return;
+  }
+
+  const content =
+    `【${date} 打卡汇总】<br>` +
+    `以下编号截至 ${timeLabel} 仍未打卡：<br><br>` +
+    `<b>${absentCodes.join('、')}</b><br><br>` +
+    `共 ${absentCodes.length} 人未打卡。`;
+
+  try {
+    const payload = {
+      token:    env.PUSHPLUS_TOKEN,
+      title:    `📋 ${timeLabel}未打卡·${absentCodes.length}人`,
+      content,
+      template: 'html',
+    };
+    if (user320.pushplus_token !== env.PUSHPLUS_TOKEN) {
+      payload.to = user320.pushplus_token;
+    }
+    const res  = await fetch('https://www.pushplus.plus/send', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (data.code === 200) { console.log(`✅ ${timeLabel} 汇总推送成功 → 编号320`); }
+    else { console.error(`❌ ${timeLabel} 汇总推送失败: code=${data.code} msg=${data.msg}`); }
+  } catch (e) {
+    console.error(`❌ ${timeLabel} 汇总推送异常: ${e.message}`);
   }
 }
