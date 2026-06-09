@@ -129,8 +129,7 @@ async function sendPushPlusOpen(env, targetCodes) {
       `打卡窗口 <b>20:30–22:00</b>，请及时打卡。<br><br>` +
       `<a href="https://tzgafazhi.fun">→ 点此立即打卡</a>`;
     try {
-      const payload = { token: env.PUSHPLUS_TOKEN, title: '🌙 晚上打卡开始啦', content, template: 'html' };
-      if (user.pushplus_token !== env.PUSHPLUS_TOKEN) payload.to = user.pushplus_token;
+      const payload = { token: user.pushplus_token, title: '🌙 晚上打卡开始啦', content, template: 'html' };
       const res  = await fetch('https://www.pushplus.plus/send', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       });
@@ -172,15 +171,11 @@ async function sendPushPlus(env, absentCodes, periodLabel, deadline, lateDeadlin
 
     try {
       const payload = {
-        token:    env.PUSHPLUS_TOKEN,
+        token:    user.pushplus_token,
         title:    `⏰ 打卡提醒·${periodLabel}`,
         content,
         template: 'html',
       };
-      // 自发自收时省略 to，否则 PushPlus 报 999
-      if (user.pushplus_token !== env.PUSHPLUS_TOKEN) {
-        payload.to = user.pushplus_token;
-      }
 
       const res = await fetch('https://www.pushplus.plus/send', {
         method: 'POST',
