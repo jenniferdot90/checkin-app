@@ -138,7 +138,7 @@ async function sendPushPlusOpen(env, targetCodes) {
       if (data.code === 200) { sent++; console.log(`✅ 20:30 推送成功 ${user.code}`); }
       else { failed++; console.error(`❌ 20:30 推送失败 ${user.code}: ${data.msg}`); }
     } catch (e) { failed++; console.error(`❌ 20:30 推送异常 ${user.code}: ${e.message}`); }
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 500));
   }
   console.log(`20:30 推送完成 | 成功:${sent} 失败:${failed} 未绑定:${targetCodes.length - users.length}`);
 }
@@ -197,8 +197,8 @@ async function sendPushPlus(env, absentCodes, periodLabel, deadline, lateDeadlin
       console.error(`❌ 微信推送异常 ${user.code}: ${e.message}`);
     }
 
-    // 每条间隔 100ms，避免 PushPlus 限流
-    await new Promise(r => setTimeout(r, 100));
+    // 每条间隔 500ms，避免 PushPlus 限流
+    await new Promise(r => setTimeout(r, 500));
   }
 
   console.log(`微信推送完成 | 成功:${sent} 失败:${failed} 未绑定跳过:${skipped}`);
